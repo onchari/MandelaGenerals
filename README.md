@@ -1,7 +1,7 @@
 # 📊 Inventory Management Admin Dashboard (HTML Template)
 
-[![Live Demo](https://img.shields.io/badge/Demo-Live%20Preview-blue?style=for-the-badge)](https://itrabbi24.github.io/Inventory-Management-Admin-Dashboard-Html-Template/)
-[![GitHub Repo](https://img.shields.io/badge/Code-GitHub-black?style=for-the-badge&logo=github)](https://github.com/itrabbi24/Inventory-Management-Admin-Dashboard-Html-Template)
+[![Live Demo](https://img.shields.io/badge/Demo-Live%20Preview-blue?style=for-the-badge)](https://onchari.github.io/MandelaGenerals/)
+[![GitHub Repo](https://img.shields.io/badge/Code-GitHub-black?style=for-the-badge&logo=github)](https://github.com/onchari/MandelaGenerals)
 
 A **modern, responsive, and customizable Admin Dashboard Template** built with **HTML, CSS, and JavaScript**.  
 Ideal for **inventory management systems**, **admin panels**, and **business dashboards**.
@@ -94,21 +94,19 @@ Just open `index.html` (or any page) in your browser.
 ## 🌍 Live Demo
 
 Hosted on GitHub Pages:
-👉 **[https://itrabbi24.github.io/Inventory-Management-Admin-Dashboard-Html-Template/](https://itrabbi24.github.io/Inventory-Management-Admin-Dashboard-Html-Template/)**
+👉 **[https://onchari.github.io/MandelaGenerals/](https://onchari.github.io/MandelaGenerals/)**
 
 ---
 
 ## ⚙️ Deployment (GitHub Pages)
 
-1. Push this repo to your GitHub account
-2. Go to **Repository → Settings → Pages**
-3. Under **Source**, choose:
-   - **Branch:** `main` (or `master`)
-   - **Folder:** `/ (root)`
-4. Save — the site will be published within a few minutes at:
+The workflow in `.github/workflows/deploy-pages.yml` deploys the static site
+automatically whenever changes are pushed to `main`. In **Repository → Settings
+→ Pages**, set the build and deployment source to **GitHub Actions**. The site
+will be published at:
 
 ```
-https://<your-username>.github.io/Inventory-Management-Admin-Dashboard-Html-Template/
+https://onchari.github.io/MandelaGenerals/
 ```
 
 ---
