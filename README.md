@@ -100,10 +100,11 @@ Hosted on GitHub Pages:
 
 ## ⚙️ Deployment (GitHub Pages)
 
-The workflow in `.github/workflows/deploy-pages.yml` deploys the static site
-automatically whenever changes are pushed to `main`. In **Repository → Settings
-→ Pages**, set the build and deployment source to **GitHub Actions**. The site
-will be published at:
+The workflow in `.github/workflows/deploy-pages.yml` enables GitHub Pages and
+deploys the static site automatically whenever changes are pushed to `main`.
+If repository settings prevent automatic enablement, set the build and
+deployment source to **GitHub Actions** in **Repository → Settings → Pages**.
+The site will be published at:
 
 ```
 https://onchari.github.io/MandelaGenerals/
