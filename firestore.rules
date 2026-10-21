@@ -1,0 +1,106 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function memberPath(businessId) {
+      return /databases/$(database)/documents/businesses/$(businessId)/members/$(request.auth.uid);
+    }
+
+    function isMember(businessId) {
+      return signedIn()
+        && exists(memberPath(businessId))
+        && get(memberPath(businessId)).data.active == true;
+    }
+
+    function hasRole(businessId, roles) {
+      return isMember(businessId)
+        && get(memberPath(businessId)).data.role in roles;
+    }
+
+    function isOwner(businessId) {
+      return hasRole(businessId, ['owner']);
+    }
+
+    function isManager(businessId) {
+      return hasRole(businessId, ['owner', 'admin', 'manager']);
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['displayName', 'email', 'createdAt']);
+      allow update: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName']);
+      allow delete: if false;
+    }
+
+    match /businesses/{businessId} {
+      allow read: if isMember(businessId);
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && getAfter(memberPath(businessId)).data.role == 'owner'
+        && getAfter(memberPath(businessId)).data.active == true;
+      allow update: if isOwner(businessId)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']);
+      allow delete: if false;
+
+      match /members/{uid} {
+        allow read: if isMember(businessId);
+        allow create: if signedIn()
+          && (
+            (uid == request.auth.uid
+              && request.resource.data.role == 'owner'
+              && request.resource.data.active == true
+              && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid)
+            ||
+            (isOwner(businessId)
+              && request.resource.data.role in ['admin', 'manager', 'cashier', 'staff'])
+          );
+        allow update: if isOwner(businessId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'active'])
+          && request.resource.data.role in ['owner', 'admin', 'manager', 'cashier', 'staff'];
+        allow delete: if isOwner(businessId) && uid != request.auth.uid;
+      }
+
+      match /products/{productId} {
+        allow read: if isMember(businessId);
+        allow create, update, delete: if isManager(businessId);
+      }
+
+      match /sales/{saleId} {
+        allow read, create: if hasRole(businessId, ['owner', 'admin', 'manager', 'cashier']);
+        allow update, delete: if isManager(businessId);
+      }
+
+      match /expenses/{expenseId} {
+        allow read, create, update: if isManager(businessId);
+        allow delete: if hasRole(businessId, ['owner', 'admin']);
+      }
+
+      match /cashTransactions/{transactionId} {
+        allow read, create: if isManager(businessId);
+        allow update, delete: if false;
+      }
+
+      match /employees/{employeeId} {
+        allow read, create, update: if isManager(businessId);
+        allow delete: if isOwner(businessId);
+      }
+
+      match /payroll/{payrollId} {
+        allow read, create, update: if hasRole(businessId, ['owner', 'admin']);
+        allow delete: if false;
+      }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

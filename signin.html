@@ -32,17 +32,18 @@
 <h3>Sign In</h3>
 <h4>Please login to your account</h4>
 </div>
+<form id="signin-form" novalidate>
 <div class="form-login">
 <label>Email</label>
 <div class="form-addons">
-<input type="text" placeholder="Enter your email address">
+<input id="signin-email" type="email" placeholder="Enter your email address" required>
 <img src="assets/img/icons/mail.svg" alt="img">
 </div>
 </div>
 <div class="form-login">
 <label>Password</label>
 <div class="pass-group">
-<input type="password" class="pass-input" placeholder="Enter your password">
+<input id="signin-password" type="password" class="pass-input" placeholder="Enter your password" required>
 <span class="fas toggle-password fa-eye-slash"></span>
 </div>
 </div>
@@ -52,8 +53,10 @@
 </div>
 </div>
 <div class="form-login">
-<a class="btn btn-login" href="index.html">Sign In</a>
+<button class="btn btn-login" type="submit">Sign In</button>
 </div>
+<div id="signin-message" role="alert" style="display: none;"></div>
+</form>
 <div class="signinform text-center">
 <h4>Don’t have an account? <a href="signup.html" class="hover-a">Sign Up</a></h4>
 </div>
@@ -92,6 +95,7 @@ Sign Up using Facebook
 
 <script src="assets/js/bootstrap.bundle.min.js"></script>
 
+<script type="module" src="/src/auth-forms.ts"></script>
 <script src="assets/js/script.js"></script>
 </body>
 </html>

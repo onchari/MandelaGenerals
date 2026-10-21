@@ -1,10 +1,9 @@
-# 📊 Inventory Management Admin Dashboard (HTML Template)
+# 📊 Inventory Management Admin Dashboard (TypeScript + Firebase Ready)
 
 [![Live Demo](https://img.shields.io/badge/Demo-Live%20Preview-blue?style=for-the-badge)](https://onchari.github.io/MandelaGenerals/)
 [![GitHub Repo](https://img.shields.io/badge/Code-GitHub-black?style=for-the-badge&logo=github)](https://github.com/onchari/MandelaGenerals)
 
-A **modern, responsive, and customizable Admin Dashboard Template** built with **HTML, CSS, and JavaScript**.  
-Ideal for **inventory management systems**, **admin panels**, and **business dashboards**.
+This project now follows the shared multi-tenant business app template: the existing HTML/CSS dashboard is retained as the UI shell, while the app is structured for **Vite + TypeScript**, **Firebase Authentication**, and **Cloud Firestore**. This allows the same dashboard to be adapted into a business-specific, multi-tenant inventory system while remaining deployable on **GitHub Pages** as a static frontend.
 
 ---
 

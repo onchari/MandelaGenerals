@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Schema generator</title>
+    <style>
+      :root {
+        --page-bg: #f2f2f2;
+        --text: #111111;
+        --muted: #7a7a7a;
+        --soft: #ececec;
+        --blue: #1d5df2;
+        --blue-soft: rgba(29, 93, 242, 0.14);
+        --chip-bg: #f2f2f2;
+        --chip-border: #d9d9d9;
+        --green: #49b36c;
+        --shadow: rgba(18, 32, 52, 0.08);
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        font-family: Arial, Helvetica, sans-serif;
+        background: var(--page-bg);
+        color: var(--text);
+      }
+
+      body {
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+      }
+
+      .page {
+        width: min(1280px, 100%);
+        padding: 28px 24px 48px;
+      }
+
+      .title {
+        margin: 0 0 48px;
+        font-size: clamp(2.3rem, 4vw, 4rem);
+        line-height: 1.08;
+        font-weight: 700;
+        letter-spacing: -0.06em;
+      }
+
+      .welcome {
+        text-align: center;
+        margin: 28px 0 34px;
+        font-size: clamp(1.1rem, 2vw, 2.5rem);
+        font-weight: 700;
+        letter-spacing: -0.05em;
+        color: rgba(17, 17, 17, 0.88);
+      }
+
+      .generator-box {
+        max-width: 1040px;
+        margin: 0 auto;
+        position: relative;
+        border: 3px solid var(--blue);
+        border-radius: 36px;
+        background: rgba(255, 255, 255, 0.08);
+        padding: 24px 20px 18px 20px;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        box-shadow: 0 0 0 1px rgba(29, 93, 242, 0.08);
+      }
+
+      .diamond {
+        width: 20px;
+        height: 20px;
+        transform: rotate(45deg);
+        border-radius: 3px;
+        background: rgba(17, 17, 17, 0.3);
+        flex-shrink: 0;
+        margin-left: 10px;
+      }
+
+      .prompt {
+        flex: 1;
+        border: none;
+        background: transparent;
+        outline: none;
+        color: var(--text);
+        font-size: clamp(1.2rem, 2vw, 2.2rem);
+        letter-spacing: -0.05em;
+        min-height: 52px;
+      }
+
+      .prompt::placeholder {
+        color: rgba(17, 17, 17, 0.45);
+      }
+
+      .assistant-pill {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        background: var(--green);
+        border: none;
+        box-shadow: 0 6px 16px rgba(73, 179, 108, 0.3);
+        position: relative;
+        flex-shrink: 0;
+        margin-right: 6px;
+      }
+
+      .assistant-pill::before {
+        content: "";
+        position: absolute;
+        left: 12px;
+        top: 12px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.9);
+        box-shadow: 7px 0 0 rgba(255,255,255,0.9), 3px 8px 0 -3px rgba(255,255,255,0.9);
+        clip-path: circle(18% at 50% 50%);
+      }
+
+      .actions {
+        max-width: 1040px;
+        margin: 18px auto 0;
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .generate-button {
+        border: none;
+        border-radius: 30px;
+        background: var(--soft);
+        color: rgba(17,17,17,0.75);
+        font-size: clamp(1.15rem, 2vw, 1.8rem);
+        font-weight: 500;
+        letter-spacing: -0.04em;
+        padding: 18px 26px 16px;
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        box-shadow: 0 3px 0 rgba(0,0,0,0.04);
+        cursor: pointer;
+      }
+
+      .generate-button .spark {
+        font-size: 1.15em;
+        transform: translateY(-1px);
+      }
+
+      .chip-row {
+        max-width: 1040px;
+        margin: 26px auto 0;
+        display: flex;
+        justify-content: center;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      .chip {
+        padding: 14px 20px 16px;
+        border-radius: 16px;
+        border: 1px solid var(--chip-border);
+        background: var(--chip-bg);
+        color: rgba(17,17,17,0.75);
+        font-size: clamp(1.05rem, 1.8vw, 1.7rem);
+        letter-spacing: -0.04em;
+        min-width: 180px;
+        text-align: center;
+        cursor: pointer;
+        transition: 0.2s ease;
+      }
+
+      .chip:hover,
+      .chip.active {
+        border-color: var(--blue);
+        background: rgba(29, 93, 242, 0.04);
+      }
+
+      .skip-wrap {
+        display: flex;
+        justify-content: center;
+        margin-top: 46px;
+      }
+
+      .skip-button {
+        border: 2px solid rgba(29, 93, 242, 0.85);
+        background: rgba(255,255,255,0.18);
+        color: var(--blue);
+        font-size: clamp(1.7rem, 3vw, 3rem);
+        font-weight: 700;
+        letter-spacing: -0.06em;
+        border-radius: 20px;
+        padding: 18px 36px 16px;
+        display: inline-flex;
+        align-items: center;
+        gap: 14px;
+        cursor: pointer;
+      }
+
+      .skip-button .arrow {
+        font-size: 0.9em;
+      }
+
+      @media (max-width: 860px) {
+        .page { padding: 26px 18px 40px; }
+        .generator-box { padding: 16px 14px 14px; border-radius: 24px; }
+        .title { margin-bottom: 20px; }
+        .welcome { margin-top: 16px; margin-bottom: 24px; }
+        .chip-row { gap: 12px; }
+        .chip { min-width: 120px; flex: 1 1 180px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <h1 class="title">Schema generator</h1>
+
+      <div class="welcome">welcome to GQL connect</div>
+
+      <div class="generator-box" aria-label="Schema generator prompt">
+        <span class="diamond" aria-hidden="true"></span>
+        <input
+          class="prompt"
+          type="text"
+          placeholder="Describe your app and Gemini will automatically generate your schema"
+          aria-label="Describe your app and Gemini will automatically generate your schema"
+        />
+        <button class="assistant-pill" type="button" aria-label="Generate schema"></button>
+      </div>
+
+      <div class="actions">
+        <button class="generate-button" type="button">
+          <span>Generate schema</span>
+          <span class="spark">✦</span>
+        </button>
+      </div>
+
+      <div class="chip-row" aria-label="App examples">
+        <button class="chip active" type="button">E-commerce app</button>
+        <button class="chip" type="button">A trivia game</button>
+        <button class="chip" type="button">A social media app</button>
+      </div>
+
+      <div class="skip-wrap">
+        <button class="skip-button" type="button">
+          <span>Skip schema</span>
+          <span class="arrow">→</span>
+        </button>
+      </div>
+    </main>
+
+    <script>
+      const chips = document.querySelectorAll('.chip');
+      chips.forEach((chip) => {
+        chip.addEventListener('click', () => {
+          chips.forEach((item) => item.classList.remove('active'));
+          chip.classList.add('active');
+        });
+      });
+    </script>
+  </body>
+</html>

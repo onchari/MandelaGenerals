@@ -32,30 +32,33 @@
 <h3>Create an Account</h3>
 <h4>Continue where you left off</h4>
 </div>
+<form id="signup-form" novalidate>
 <div class="form-login">
 <label>Full Name</label>
 <div class="form-addons">
-<input type="text" placeholder="Enter your full name">
+<input id="signup-name" type="text" placeholder="Enter your full name" required>
 <img src="assets/img/icons/users1.svg" alt="img">
 </div>
 </div>
 <div class="form-login">
 <label>Email</label>
 <div class="form-addons">
-<input type="text" placeholder="Enter your email address">
+<input id="signup-email" type="email" placeholder="Enter your email address" required>
 <img src="assets/img/icons/mail.svg" alt="img">
 </div>
 </div>
 <div class="form-login">
 <label>Password</label>
 <div class="pass-group">
-<input type="password" class="pass-input" placeholder="Enter your password">
+<input id="signup-password" type="password" class="pass-input" placeholder="Enter your password" required>
 <span class="fas toggle-password fa-eye-slash"></span>
 </div>
 </div>
 <div class="form-login">
-<a class="btn btn-login">Sign Up</a>
+<button class="btn btn-login" type="submit">Sign Up</button>
 </div>
+<div id="signup-message" role="alert" style="display: none;"></div>
+</form>
 <div class="signinform text-center">
 <h4>Already a user? <a href="signin.html" class="hover-a">Sign In</a></h4>
 </div>
@@ -94,6 +97,7 @@ Sign Up using Facebook
 
 <script src="assets/js/bootstrap.bundle.min.js"></script>
 
+<script type="module" src="/src/auth-forms.ts"></script>
 <script src="assets/js/script.js"></script>
 </body>
 </html>
