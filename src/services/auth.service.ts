@@ -1,5 +1,6 @@
 import {
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
@@ -39,6 +40,17 @@ export async function login(email: string, password: string): Promise<UserCreden
   }
 
   return signInWithEmailAndPassword(authInstance, email.trim(), password);
+}
+
+export async function sendPasswordReset(email: string): Promise<void> {
+  assertFirebaseReady();
+
+  const authInstance = auth;
+  if (!authInstance) {
+    throw new Error('Firebase is not configured.');
+  }
+
+  await sendPasswordResetEmail(authInstance, email.trim());
 }
 
 export async function logout(): Promise<void> {
