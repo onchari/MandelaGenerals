@@ -28,54 +28,203 @@ service cloud.firestore {
       return hasRole(businessId, ['owner', 'admin', 'manager']);
     }
 
+    function isAdmin(businessId) {
+      return hasRole(businessId, ['owner', 'admin']);
+    }
+
+    function canSell(businessId) {
+      return hasRole(businessId, ['owner', 'admin', 'manager', 'cashier']);
+    }
+
+    function dayPath(businessId, dayId) {
+      return /databases/$(database)/documents/businesses/$(businessId)/business_days/$(dayId);
+    }
+
+    function dayUnlocked(businessId, dayId) {
+      return dayId is string
+        && exists(dayPath(businessId, dayId))
+        && get(dayPath(businessId, dayId)).data.status != 'LOCKED';
+    }
+
+    function dayNotLocked(businessId, dayId) {
+      return dayId is string
+        && (!exists(dayPath(businessId, dayId))
+          || get(dayPath(businessId, dayId)).data.status != 'LOCKED');
+    }
+
+    function syncKeys() {
+      return ['updatedAt', '_syncVersion', '_syncClient', '_syncUpdatedAt', '_syncMutationId'];
+    }
+
+    function onlyChanges(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    function sellDecrementOnly() {
+      return onlyChanges(['qty'].concat(syncKeys()))
+        && request.resource.data.qty is int
+        && request.resource.data.qty < resource.data.qty;
+    }
+
+    function validStock() {
+      return request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.get('qty', 0) is int
+        && request.resource.data.get('buyPrice', 0) >= 0
+        && request.resource.data.get('sellPrice', 0) >= 0;
+    }
+
+    function validSale() {
+      let sale = request.resource.data;
+      return sale.qty is int && sale.qty > 0
+        && sale.priceUsed is number && sale.priceUsed >= 0
+        && sale.get('buyPrice', 0) >= 0
+        && sale.businessDate is string;
+    }
+
+    function validFinance() {
+      let finance = request.resource.data;
+      return finance.type in ['investment', 'expense', 'withdrawal']
+        && finance.amount is number && finance.amount > 0
+        && finance.businessDate is string;
+    }
+
+    function validProduct() {
+      let product = request.resource.data;
+      return product.keys().hasAll([
+          'name', 'sku', 'quantity', 'reorderLevel', 'costPrice', 'sellingPrice', 'createdAt'
+        ])
+        && product.keys().hasOnly([
+          'name', 'sku', 'quantity', 'reorderLevel', 'costPrice', 'sellingPrice', 'createdAt'
+        ])
+        && product.name is string
+        && product.name.size() > 0
+        && product.name.size() <= 120
+        && product.sku is string
+        && product.sku.size() <= 120
+        && product.quantity is int
+        && product.quantity >= 0
+        && product.quantity <= 9007199254740991
+        && product.reorderLevel is int
+        && product.reorderLevel >= 0
+        && product.reorderLevel <= 9007199254740991
+        && product.costPrice is int
+        && product.costPrice >= 0
+        && product.costPrice <= 9007199254740991
+        && product.sellingPrice is int
+        && product.sellingPrice >= 0
+        && product.sellingPrice <= 9007199254740991
+        && product.createdAt is timestamp;
+    }
+
     match /users/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
       allow create: if signedIn()
         && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['displayName', 'email', 'createdAt', 'activeBusinessId']);
+        && request.resource.data.keys().hasOnly(['displayName', 'email', 'createdAt'])
+        && request.resource.data.keys().hasAll(['displayName', 'email', 'createdAt'])
+        && request.resource.data.displayName is string
+        && request.resource.data.email is string;
       allow update: if signedIn()
         && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'activeBusinessId']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName'])
+        && request.resource.data.displayName is string;
       allow delete: if false;
+
+      match /businessMemberships/{businessId} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow write: if false;
+      }
     }
 
     match /businesses/{businessId} {
       allow read: if isMember(businessId);
-      allow create: if signedIn()
-        && request.resource.data.ownerId == request.auth.uid
-        && getAfter(memberPath(businessId)).data.role == 'owner'
-        && getAfter(memberPath(businessId)).data.active == true;
+      allow create: if false;
       allow update: if isOwner(businessId)
         && request.resource.data.ownerId == resource.data.ownerId
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 100;
       allow delete: if false;
 
       match /members/{uid} {
         allow read: if isMember(businessId);
-        allow create: if signedIn()
-          && (
-            (uid == request.auth.uid
-              && request.resource.data.role == 'owner'
-              && request.resource.data.active == true
-              && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid)
-            ||
-            (isOwner(businessId)
-              && request.resource.data.role in ['admin', 'manager', 'cashier', 'staff'])
-          );
-        allow update: if isOwner(businessId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'active'])
-          && request.resource.data.role in ['owner', 'admin', 'manager', 'cashier', 'staff'];
-        allow delete: if isOwner(businessId) && uid != request.auth.uid;
+        allow write: if false;
       }
 
       match /products/{productId} {
         allow read: if isMember(businessId);
-        allow create, update, delete: if isManager(businessId);
+        allow create: if isManager(businessId) && validProduct();
+        allow update: if isManager(businessId)
+          && validProduct()
+          && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isManager(businessId);
+      }
+
+      match /invites/{inviteId} {
+        allow read: if isAdmin(businessId);
+        allow write: if false;
+      }
+
+      match /items/{itemId} {
+        allow read: if isMember(businessId);
+        allow create: if isManager(businessId) && validStock();
+        allow update: if (isManager(businessId) && validStock())
+          || (canSell(businessId) && sellDecrementOnly());
+        allow delete: if false;
+      }
+
+      match /shoe_sizes/{itemId} {
+        allow read: if isMember(businessId);
+        allow create: if isManager(businessId) && validStock();
+        allow update: if (isManager(businessId) && validStock())
+          || (canSell(businessId) && sellDecrementOnly());
+        allow delete: if false;
+      }
+
+      match /stock_moves/{moveId} {
+        allow read: if isMember(businessId);
+        allow create: if canSell(businessId)
+          && request.resource.data.delta is int
+          && request.resource.data.itemId is string;
+        allow update, delete: if false;
       }
 
       match /sales/{saleId} {
-        allow read, create: if hasRole(businessId, ['owner', 'admin', 'manager', 'cashier']);
-        allow update, delete: if isManager(businessId);
+        allow read: if canSell(businessId);
+        allow create: if canSell(businessId)
+          && validSale()
+          && dayUnlocked(businessId, request.resource.data.businessDate);
+        allow update: if isManager(businessId)
+          && validSale()
+          && dayUnlocked(businessId, resource.data.businessDate)
+          && dayUnlocked(businessId, request.resource.data.businessDate);
+        allow delete: if false;
+      }
+
+      match /finances/{entryId} {
+        allow read: if isManager(businessId);
+        allow create: if isManager(businessId)
+          && validFinance()
+          && dayNotLocked(businessId, request.resource.data.businessDate);
+        allow update: if isManager(businessId)
+          && onlyChanges(['voided', 'voidedBy', 'voidedAt'].concat(syncKeys()))
+          && dayNotLocked(businessId, resource.data.businessDate);
+        allow delete: if false;
+      }
+
+      match /business_days/{dayId} {
+        allow read: if isMember(businessId);
+        allow create: if canSell(businessId)
+          && request.resource.data.businessDate == dayId
+          && request.resource.data.status == 'OPEN';
+        allow update: if isManager(businessId)
+          && resource.data.status != 'LOCKED'
+          && request.resource.data.businessDate == resource.data.businessDate
+          && request.resource.data.status in ['OPEN', 'CLOSED', 'LOCKED']
+          && (request.resource.data.status != 'LOCKED' || isAdmin(businessId));
+        allow delete: if false;
       }
 
       match /expenses/{expenseId} {
@@ -96,6 +245,36 @@ service cloud.firestore {
       match /payroll/{payrollId} {
         allow read, create, update: if hasRole(businessId, ['owner', 'admin']);
         allow delete: if false;
+      }
+
+      match /types/{typeId} {
+        allow read: if isMember(businessId);
+        allow create, update: if isManager(businessId);
+        allow delete: if false;
+      }
+
+      match /wishlist/{itemId} {
+        allow read, create, update, delete: if isManager(businessId);
+      }
+
+      match /purchase_budgets/{budgetId} {
+        allow read, create, update, delete: if isManager(businessId);
+      }
+
+      match /customers/{customerId} {
+        allow read, create, update: if canSell(businessId);
+        allow delete: if false;
+      }
+
+      match /customer_txns/{transactionId} {
+        allow read, create: if canSell(businessId);
+        allow update: if isManager(businessId);
+        allow delete: if false;
+      }
+
+      match /sync_metadata/{docId} {
+        allow read, write: if isMember(businessId)
+          && docId.matches(request.auth.uid + '_.*');
       }
     }
 

@@ -1,6 +1,12 @@
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth, isFirebaseConfigured } from '../../config/firebase';
-import { createBusiness, getActiveBusiness, type ActiveBusiness } from '../../services/business.service';
+import {
+  createBusiness,
+  getSelectedBusiness,
+  getUserBusinesses,
+  setSelectedBusiness,
+  type ActiveBusiness,
+} from '../../services/business.service';
 import { addProduct, deleteProduct, getProduct, getProducts, updateProduct } from './service';
 import type { InventoryPage, Product, ProductInput } from './types';
 import './inventory.css';
@@ -15,6 +21,7 @@ const pageByPath: Record<string, InventoryPage> = {
 };
 const page = pageByPath[window.location.pathname.split('/').pop() ?? ''] ?? 'list';
 let activeBusiness: ActiveBusiness | null = null;
+let currentUser: User | null = null;
 let products: Product[] = [];
 
 function escapeHtml(value: string): string {
@@ -39,6 +46,11 @@ function displayName(user: User): string {
   return user.displayName?.trim() || user.email || 'your account';
 }
 
+function canManageInventory(): boolean {
+  return activeBusiness !== null &&
+    ['owner', 'admin', 'manager'].includes(activeBusiness.role);
+}
+
 function renderShell(title: string, subtitle: string, body: string): void {
   if (!content) return;
   content.innerHTML = `
@@ -46,14 +58,28 @@ function renderShell(title: string, subtitle: string, body: string): void {
       <header class="inventory-heading">
         <div><h2>${escapeHtml(title)}</h2><p>${subtitle}</p></div>
         <nav class="inventory-actions" aria-label="Inventory">
+          ${activeBusiness ? '<button class="btn btn-outline-secondary" id="switch-business" type="button">Switch business</button>' : ''}
           <a class="btn btn-primary" href="productlist.html">Products</a>
-          <a class="btn btn-primary" href="addproduct.html">Add product</a>
+          ${canManageInventory() ? '<a class="btn btn-primary" href="addproduct.html">Add product</a>' : ''}
           <a class="btn btn-primary" href="inventoryreport.html">Inventory report</a>
         </nav>
       </header>
       <div data-message role="status" hidden></div>
       ${body}
     </section>`;
+
+  content.querySelector<HTMLButtonElement>('#switch-business')?.addEventListener('click', async () => {
+    if (!currentUser) return;
+    try {
+      const businesses = await getUserBusinesses(currentUser.uid);
+      if (businesses.length > 1) {
+        activeBusiness = null;
+        renderBusinessSelection(currentUser, businesses);
+      }
+    } catch (error) {
+      showMessage(error instanceof Error ? error.message : 'Could not load your businesses.');
+    }
+  });
 }
 
 function renderBusinessSetup(user: User): void {
@@ -78,15 +104,43 @@ function renderBusinessSetup(user: User): void {
     const button = form.querySelector<HTMLButtonElement>('button[type="submit"]');
     if (button) button.disabled = true;
     try {
-      activeBusiness = await createBusiness(
-        new FormData(form).get('name')?.toString() ?? '',
-        user.uid,
-      );
-      await loadInventory();
+      activeBusiness = await createBusiness(new FormData(form).get('name')?.toString() ?? '');
+      setSelectedBusiness(user.uid, activeBusiness.id);
+      await loadInventory(user);
     } catch (error) {
       showMessage(error instanceof Error ? error.message : 'Could not create the business.');
       if (button) button.disabled = false;
     }
+  });
+}
+
+function renderBusinessSelection(user: User, businesses: ActiveBusiness[]): void {
+  renderShell('Select a business', `Signed in as ${escapeHtml(displayName(user))}`, `
+    <div class="inventory-card">
+      <h3>Choose a business workspace</h3>
+      <p class="inventory-muted">Your access is determined by your active membership in each business.</p>
+      <form class="inventory-form" id="business-selection-form">
+        <div class="inventory-field-full">
+          <label for="business-selection">Business</label>
+          <select class="form-control" id="business-selection" name="businessId" required>
+            ${businesses.map((business) => `<option value="${escapeHtml(business.id)}">${escapeHtml(business.name)} (${escapeHtml(business.role)})</option>`).join('')}
+          </select>
+        </div>
+        <div class="inventory-form-actions">
+          <button class="btn btn-primary" type="submit">Open business</button>
+        </div>
+      </form>
+    </div>`);
+
+  content?.querySelector<HTMLFormElement>('#business-selection-form')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const businessId = new FormData(event.currentTarget as HTMLFormElement).get('businessId')?.toString();
+    if (!businessId || !businesses.some((business) => business.id === businessId)) {
+      showMessage('Select a business where you have an active membership.');
+      return;
+    }
+    setSelectedBusiness(user.uid, businessId);
+    void loadInventory(user);
   });
 }
 
@@ -105,6 +159,7 @@ function productRows(rows: Product[]): string {
     return '<tr><td colspan="7" class="text-center inventory-muted">No products match this view.</td></tr>';
   }
 
+  const managementActions = canManageInventory();
   return rows.map((product) => `
     <tr>
       <td>${escapeHtml(product.name)}</td>
@@ -115,8 +170,8 @@ function productRows(rows: Product[]): string {
       <td>${statusFor(product)}</td>
       <td>
         <a class="btn btn-sm btn-outline-primary" href="product-details.html?id=${encodeURIComponent(product.id)}">View</a>
-        <a class="btn btn-sm btn-outline-secondary" href="editproduct.html?id=${encodeURIComponent(product.id)}">Edit</a>
-        <button class="btn btn-sm btn-outline-danger" type="button" data-delete="${escapeHtml(product.id)}">Delete</button>
+        ${managementActions ? `<a class="btn btn-sm btn-outline-secondary" href="editproduct.html?id=${encodeURIComponent(product.id)}">Edit</a>
+        <button class="btn btn-sm btn-outline-danger" type="button" data-delete="${escapeHtml(product.id)}">Delete</button>` : ''}
       </td>
     </tr>`).join('');
 }
@@ -141,7 +196,7 @@ function bindProductTable(initialRows: Product[], lowStockOnly = false): void {
         button.disabled = true;
         try {
           await deleteProduct(activeBusiness!.id, productId);
-          await loadInventory();
+          await loadInventory(currentUser ?? undefined);
         } catch (error) {
           showMessage(error instanceof Error ? error.message : 'Could not delete the product.');
           button.disabled = false;
@@ -169,7 +224,7 @@ function renderProductList(lowStockOnly = false): void {
       <div class="inventory-toolbar">
         <input class="form-control inventory-search" id="inventory-search" type="search" placeholder="Search product name or SKU" aria-label="Search products">
         ${lowStockOnly ? '' : `<select class="form-control" id="stock-filter" aria-label="Filter stock"><option value="all">All stock</option><option value="low">Low stock only</option></select>`}
-        <a class="btn btn-primary" href="addproduct.html">Add product</a>
+        ${canManageInventory() ? '<a class="btn btn-primary" href="addproduct.html">Add product</a>' : ''}
       </div>
       <div class="inventory-table-wrap">
         <table class="table inventory-table">
@@ -268,13 +323,17 @@ function renderDetails(product: Product | undefined): void {
         <dt class="col-sm-4">Cost price (minor units)</dt><dd class="col-sm-8">${formatAmount(product.costPrice)}</dd>
         <dt class="col-sm-4">Selling price (minor units)</dt><dd class="col-sm-8">${formatAmount(product.sellingPrice)}</dd>
       </dl>
-      <a class="btn btn-primary" href="editproduct.html?id=${encodeURIComponent(product.id)}">Edit product</a>
+      ${canManageInventory() ? `<a class="btn btn-primary" href="editproduct.html?id=${encodeURIComponent(product.id)}">Edit product</a>` : ''}
       <a class="btn btn-cancel" href="productlist.html">Back to inventory</a>
     </div>`);
 }
 
 async function renderPage(): Promise<void> {
   if (!activeBusiness) {
+    return;
+  }
+  if ((page === 'add' || page === 'edit') && !canManageInventory()) {
+    renderShell('Access restricted', 'Your business role does not allow inventory changes.', '<div class="inventory-card">Contact a business owner or manager if you need access.</div>');
     return;
   }
   products = await getProducts(activeBusiness.id);
@@ -306,6 +365,8 @@ async function renderPage(): Promise<void> {
 
 async function loadInventory(user?: User): Promise<void> {
   if (!content) return;
+  currentUser = user ?? null;
+  activeBusiness = null;
   if (!isFirebaseConfigured || !auth) {
     renderShell('Firebase setup required', 'Configure Firebase before using inventory.', '<div class="inventory-card">Set the VITE_FIREBASE_* values in .env.local, then restart the development server.</div>');
     return;
@@ -317,9 +378,14 @@ async function loadInventory(user?: User): Promise<void> {
 
   renderShell('Loading inventory…', `Signed in as ${escapeHtml(displayName(user))}`, '<div class="inventory-card">Connecting to Firestore…</div>');
   try {
-    activeBusiness ??= await getActiveBusiness(user.uid);
-    if (!activeBusiness) {
+    const businesses = await getUserBusinesses(user.uid);
+    if (businesses.length === 0) {
       renderBusinessSetup(user);
+      return;
+    }
+    activeBusiness = getSelectedBusiness(user.uid, businesses);
+    if (!activeBusiness) {
+      renderBusinessSelection(user, businesses);
       return;
     }
     await renderPage();

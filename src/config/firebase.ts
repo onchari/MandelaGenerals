@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getFunctions } from "firebase/functions";
 
 const env = import.meta.env;
 
@@ -28,6 +29,7 @@ const app = isFirebaseConfigured ? initializeApp(config) : null;
 
 export const auth = app ? getAuth(app) : undefined;
 export const db = app ? getFirestore(app) : undefined;
+export const functions = app ? getFunctions(app, 'us-central1') : undefined;
 
 export function assertFirebaseReady(): void {
   if (!isFirebaseConfigured || !auth || !db) {

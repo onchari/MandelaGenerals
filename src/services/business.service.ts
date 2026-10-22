@@ -1,18 +1,21 @@
-import {
-  doc,
-  getDoc,
-  serverTimestamp,
-  setDoc,
-  writeBatch,
-} from 'firebase/firestore';
-import { db, assertFirebaseReady } from '../config/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { collection, getDocs } from 'firebase/firestore';
+import { db, functions, assertFirebaseReady } from '../config/firebase';
 
 export interface ActiveBusiness {
   id: string;
   name: string;
+  role: 'owner' | 'admin' | 'manager' | 'cashier' | 'staff';
 }
 
-export async function getActiveBusiness(userId: string): Promise<ActiveBusiness | null> {
+const roleValues = ['owner', 'admin', 'manager', 'cashier', 'staff'] as const;
+const activeBusinessStorageKey = (userId: string): string => `activeBusinessId:${userId}`;
+
+function isMemberRole(value: unknown): value is ActiveBusiness['role'] {
+  return typeof value === 'string' && roleValues.some((role) => role === value);
+}
+
+export async function getUserBusinesses(userId: string): Promise<ActiveBusiness[]> {
   assertFirebaseReady();
 
   const dbInstance = db;
@@ -20,31 +23,43 @@ export async function getActiveBusiness(userId: string): Promise<ActiveBusiness 
     throw new Error('Firebase is not configured.');
   }
 
-  const userSnapshot = await getDoc(doc(dbInstance, 'users', userId));
-  const businessId = userSnapshot.data()?.activeBusinessId;
-  if (typeof businessId !== 'string' || !businessId.trim()) {
-    return null;
-  }
-
-  const businessSnapshot = await getDoc(doc(dbInstance, 'businesses', businessId));
-  if (!businessSnapshot.exists()) {
-    throw new Error('Your active business could not be found. Contact your administrator.');
-  }
-
-  const name = businessSnapshot.data().name;
-  if (typeof name !== 'string' || !name.trim()) {
-    throw new Error('Your active business has invalid details. Contact your administrator.');
-  }
-
-  return { id: businessSnapshot.id, name };
+  const memberships = await getDocs(collection(dbInstance, 'users', userId, 'businessMemberships'));
+  return memberships.docs.flatMap((membership) => {
+    const data = membership.data();
+    if (data.active !== true) return [];
+    if (
+      typeof data.businessName !== 'string' ||
+      !data.businessName.trim() ||
+      !isMemberRole(data.role)
+    ) {
+      throw new Error(`Business membership ${membership.id} has invalid data.`);
+    }
+    return [{ id: membership.id, name: data.businessName, role: data.role }];
+  });
 }
 
-export async function createBusiness(name: string, ownerId: string): Promise<ActiveBusiness> {
+export function getSelectedBusiness(
+  userId: string,
+  businesses: ActiveBusiness[],
+): ActiveBusiness | null {
+  const selectedId = localStorage.getItem(activeBusinessStorageKey(userId));
+  const selected = businesses.find((business) => business.id === selectedId);
+  if (selected) return selected;
+  if (businesses.length !== 1) return null;
+
+  setSelectedBusiness(userId, businesses[0].id);
+  return businesses[0];
+}
+
+export function setSelectedBusiness(userId: string, businessId: string): void {
+  localStorage.setItem(activeBusinessStorageKey(userId), businessId);
+}
+
+export async function createBusiness(name: string): Promise<ActiveBusiness> {
   assertFirebaseReady();
 
-  const dbInstance = db;
-  if (!dbInstance) {
-    throw new Error('Firebase is not configured.');
+  if (!functions) {
+    throw new Error('Firebase Functions is not configured.');
   }
 
   const normalizedName = name.trim();
@@ -52,21 +67,20 @@ export async function createBusiness(name: string, ownerId: string): Promise<Act
     throw new Error('Business name is required.');
   }
 
-  const businessRef = doc(dbInstance, 'businesses', crypto.randomUUID());
-  const batch = writeBatch(dbInstance);
+  const call = httpsCallable<{ name: string }, { id: string; name: string }>(
+    functions,
+    'createBusiness',
+  );
+  const result = await call({ name: normalizedName });
 
-  batch.set(businessRef, {
-    name: normalizedName,
-    ownerId,
-    createdAt: serverTimestamp(),
-  });
-  batch.set(doc(dbInstance, 'businesses', businessRef.id, 'members', ownerId), {
-    role: 'owner',
-    active: true,
-    joinedAt: serverTimestamp(),
-  });
-  batch.set(doc(dbInstance, 'users', ownerId), { activeBusinessId: businessRef.id }, { merge: true });
-  await batch.commit();
+  if (
+    typeof result.data.id !== 'string' ||
+    !result.data.id ||
+    typeof result.data.name !== 'string' ||
+    !result.data.name.trim()
+  ) {
+    throw new Error('Business creation returned invalid data.');
+  }
 
-  return { id: businessRef.id, name: normalizedName };
+  return { id: result.data.id, name: result.data.name, role: 'owner' };
 }

@@ -24,12 +24,21 @@ Additional implementation work has been added in:
 - [src/modules/inventory/types.ts](src/modules/inventory/types.ts)
 
 Covered functionality:
-- Business creation with a generated ID
-- Linking a user to an active business
-- Reading the active business for a signed-in user
+- Trusted business creation through an authenticated callable Cloud Function
+- Atomic creation of the business, owner membership, and user membership index
+- Listing a user's active business memberships
+- Persisting selected business locally for navigation, while Firestore rules remain the authorization source
+- Switching between multiple active business memberships
 - Inventory product CRUD operations (add, list, fetch, update, delete)
 - Inventory product form and reporting views
 - Business setup flow if a user has no active business
+- Business-role checks in the inventory UI and Firestore rules
+
+### App entry and business dashboard
+- Replaced the app root with a public home page offering sign-up and log-in.
+- After authentication, the root now shows business setup, a selector for multiple memberships, or a dashboard for the selected business.
+- The business dashboard shows product count, total stock, low-stock count, inventory cost value, recent products, and role-appropriate inventory links.
+- Added the required auth and inventory HTML entries to the Vite build.
 
 ### Code quality / validation
 - The project compiles successfully with the existing TypeScript + Vite setup.
@@ -49,6 +58,10 @@ The app has been opened locally and the safe, unauthenticated checks have been c
 
 #### Validation performed
 - `npm run build` passed successfully.
+- `npm run build --prefix functions` passed successfully.
+- Firebase config JSON validation and `git diff --check` passed.
+- `npm audit --omit=dev --prefix functions` passed with zero reported vulnerabilities after updating Firebase Admin/Functions dependencies.
+- Firestore Emulator validation could not run because Java is not installed; no live Firebase rules or functions were changed.
 - The local Vite app loaded and the product-list page rendered.
 - The product-list route correctly showed “Sign in required” without an authenticated user.
 - Submitting the sign-in form empty displayed “Please enter both email and password.”
@@ -57,17 +70,18 @@ The app has been opened locally and the safe, unauthenticated checks have been c
 - Attempted to create a clearly named validation business after explicit approval. Firestore rejected the batch with “Missing or insufficient permissions,” so no business or product CRUD flow was completed.
 - Added the existing `firestore.rules` file to the Firebase CLI configuration in [firebase.json](firebase.json), so a future Firebase deployment can include those rules.
 - Attempted to deploy only Firestore rules to the configured project `mandelageneralshop`. Deployment could not authenticate: the Firebase CLI has a saved account but cannot access projects or perform the deploy. No remote rules were changed.
-- After the user manually published the rules, retried business creation in the signed-in browser. Firestore still returned “Missing or insufficient permissions”; the business setup form remains visible. No product workflow was attempted because no active business was created.
+- After the user supplied the direct-client rules matching the local rules, reloaded the signed-in browser and retried business creation as “Inventory Validation 20261022 2008.” Firestore still returned “Missing or insufficient permissions”; the business setup form remains visible. No product workflow was attempted because no active business was created.
+- The implementation has since been changed to use callable Cloud Function business creation and the app's `products` schema. The function and stricter membership/role rules are local only and have not been deployed; browser workflow validation must wait until deployment to a test project.
+- The Cloud Function and Firestore rules preserve the previously shared legacy collection paths and constraints while adding the `products` schema.
 
 #### Validation blocked
-The browser create-business request is still denied after the user manually published the rules. Confirm that the rules were published to the `mandelageneralshop` project's Firestore database (default database), and inspect Firestore Rules simulator/monitoring for the denied batch writes to `/businesses/{id}`, `/businesses/{id}/members/{uid}`, or `/users/{uid}`. The exact denied write must be identified before changing rules. After correcting the actual cause, retry business setup and finish product add, list, edit, delete, and report/filter validation using test data.
+The current callable function and Firestore rules have not been deployed. Firebase CLI authentication previously failed, so do not expect the current browser business-creation attempt to work yet. Deploy the reviewed function and rules to a dedicated/test Firebase project first, then validate business creation and product add, list, edit, delete, and report/filter behavior. See [Step 1.md](Step%201.md) for the ordered checklist and deploy commands.
 
 ### 2. Business selection and multi-tenant logic
-The app should support more complete business handling:
-- selecting an active business when a user belongs to multiple business workspaces
-- showing the current business clearly in the UI
-- handling missing or invalid `activeBusinessId` safely
-- preventing a user from creating or editing data without a selected business
+Basic membership loading, single-business auto-selection, multiple-business selection, and switching are implemented. Still needed:
+- authorized member invitations and role changes through trusted backend operations
+- robust handling for revoked memberships and stale selections
+- consistently displaying business context across all application modules
 
 ### 3. Inventory UX improvements
 The current module should be polished with:
