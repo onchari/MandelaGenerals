@@ -12,6 +12,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         index: resolve(root, 'index.html'),
+        notFound: resolve(root, '404.html'),
         signin: resolve(root, 'signin.html'),
         signup: resolve(root, 'signup.html'),
         forgetpassword: resolve(root, 'forgetpassword.html'),

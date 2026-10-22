@@ -2,8 +2,14 @@ import { onAuthStateChanged, type User } from 'firebase/auth';
 import { auth, isFirebaseConfigured } from '../../config/firebase';
 import {
   createBusiness,
+  getBusinessPageUrl,
+  getBusinessUrl,
+  getBusinessUrlSuggestions,
+  getTenantSlugFromLocation,
   getSelectedBusiness,
   getUserBusinesses,
+  isBusinessSlugAvailable,
+  suggestBusinessSlug,
   setSelectedBusiness,
   type ActiveBusiness,
 } from '../../services/business.service';
@@ -46,6 +52,16 @@ function displayName(user: User): string {
   return user.displayName?.trim() || user.email || 'your account';
 }
 
+function pageHref(pageName: string, productId?: string): string {
+  const slug = activeBusiness ? activeBusiness.slug : getTenantSlugFromLocation();
+  const href = slug
+    ? getBusinessPageUrl(slug, pageName)
+    : new URL(pageName, window.location.origin + import.meta.env.BASE_URL).href;
+  const url = new URL(href, window.location.origin);
+  if (productId) url.searchParams.set('id', productId);
+  return url.origin === window.location.origin ? `${url.pathname}${url.search}` : url.href;
+}
+
 function canManageInventory(): boolean {
   return activeBusiness !== null &&
     ['owner', 'admin', 'manager'].includes(activeBusiness.role);
@@ -59,9 +75,9 @@ function renderShell(title: string, subtitle: string, body: string): void {
         <div><h2>${escapeHtml(title)}</h2><p>${subtitle}</p></div>
         <nav class="inventory-actions" aria-label="Inventory">
           ${activeBusiness ? '<button class="btn btn-outline-secondary" id="switch-business" type="button">Switch business</button>' : ''}
-          <a class="btn btn-primary" href="productlist.html">Products</a>
-          ${canManageInventory() ? '<a class="btn btn-primary" href="addproduct.html">Add product</a>' : ''}
-          <a class="btn btn-primary" href="inventoryreport.html">Inventory report</a>
+          <a class="btn btn-primary" href="${pageHref('productlist.html')}">Products</a>
+          ${canManageInventory() ? `<a class="btn btn-primary" href="${pageHref('addproduct.html')}">Add product</a>` : ''}
+          <a class="btn btn-primary" href="${pageHref('inventoryreport.html')}">Inventory report</a>
         </nav>
       </header>
       <div data-message role="status" hidden></div>
@@ -92,19 +108,81 @@ function renderBusinessSetup(user: User): void {
           <label for="business-name">Business name</label>
           <input class="form-control" id="business-name" name="name" maxlength="100" required>
         </div>
+        <div class="inventory-field-full">
+          <label for="business-slug">Choose your business address</label>
+          <input class="form-control" id="business-slug" name="slug" maxlength="48" pattern="[a-z0-9]+(-[a-z0-9]+)*" autocapitalize="none" spellcheck="false" required>
+          <small class="inventory-muted" id="slug-status" aria-live="polite">Use lowercase letters, numbers, and single hyphens.</small>
+          <small class="inventory-muted">Local testing: <code id="local-slug-preview"></code></small>
+          <small class="inventory-muted">GitHub Pages: <code id="github-slug-preview"></code></small>
+          <small class="inventory-muted">Local sign-in may need to be repeated on the business subdomain because browser sessions are separated by origin.</small>
+          <small class="inventory-muted">GitHub Pages uses a path, not subdomains. A custom domain requires a domain and wildcard DNS you control.</small>
+        </div>
         <div class="inventory-form-actions">
           <button class="btn btn-primary" type="submit">Create business</button>
         </div>
       </form>
     </div>`);
 
-  content?.querySelector<HTMLFormElement>('#business-form')?.addEventListener('submit', async (event) => {
+  const setupForm = content?.querySelector<HTMLFormElement>('#business-form');
+  const nameInput = setupForm?.elements.namedItem('name') as HTMLInputElement | null;
+  const slugInput = setupForm?.elements.namedItem('slug') as HTMLInputElement | null;
+  const slugStatus = content?.querySelector<HTMLElement>('#slug-status');
+  const localPreview = content?.querySelector<HTMLElement>('#local-slug-preview');
+  const githubPreview = content?.querySelector<HTMLElement>('#github-slug-preview');
+  let slugWasEdited = false;
+  let checkVersion = 0;
+  let availabilityTimer: number | undefined;
+  const updateSlugPreview = (): void => {
+    const slug = slugInput?.value.trim().toLowerCase() || 'your-name';
+    const suggestions = getBusinessUrlSuggestions(slug);
+    if (localPreview) localPreview.textContent = suggestions.local;
+    if (githubPreview) githubPreview.textContent = suggestions.githubPages;
+  };
+  const checkSlug = async (): Promise<void> => {
+    const version = ++checkVersion;
+    if (!slugInput || !slugStatus) return;
+    const slug = slugInput.value.trim().toLowerCase();
+    if (!slugInput.validity.valid) {
+      slugStatus.textContent = 'Use 1–48 lowercase letters, numbers, and single hyphens.';
+      return;
+    }
+    slugStatus.textContent = 'Checking address…';
+    try {
+      const available = await isBusinessSlugAvailable(slug);
+      if (version !== checkVersion) return;
+      slugStatus.textContent = available ? 'Address is available.' : 'That address is already taken.';
+    } catch (error) {
+      if (version !== checkVersion) return;
+      slugStatus.textContent = error instanceof Error ? error.message : 'Could not check address availability.';
+    }
+  };
+  const scheduleSlugCheck = (): void => {
+    checkVersion++;
+    if (availabilityTimer !== undefined) window.clearTimeout(availabilityTimer);
+    availabilityTimer = window.setTimeout(() => void checkSlug(), 300);
+  };
+  nameInput?.addEventListener('input', () => {
+    if (!slugWasEdited && slugInput) slugInput.value = suggestBusinessSlug(nameInput.value);
+    updateSlugPreview();
+    scheduleSlugCheck();
+  });
+  slugInput?.addEventListener('input', () => {
+    slugWasEdited = true;
+    updateSlugPreview();
+    scheduleSlugCheck();
+  });
+  updateSlugPreview();
+
+  setupForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = event.currentTarget as HTMLFormElement;
     const button = form.querySelector<HTMLButtonElement>('button[type="submit"]');
     if (button) button.disabled = true;
     try {
-      activeBusiness = await createBusiness(new FormData(form).get('name')?.toString() ?? '');
+      activeBusiness = await createBusiness(
+        new FormData(form).get('name')?.toString() ?? '',
+        new FormData(form).get('slug')?.toString() ?? '',
+      );
       setSelectedBusiness(user.uid, activeBusiness.id);
       await loadInventory(user);
     } catch (error) {
@@ -135,12 +213,15 @@ function renderBusinessSelection(user: User, businesses: ActiveBusiness[]): void
   content?.querySelector<HTMLFormElement>('#business-selection-form')?.addEventListener('submit', (event) => {
     event.preventDefault();
     const businessId = new FormData(event.currentTarget as HTMLFormElement).get('businessId')?.toString();
-    if (!businessId || !businesses.some((business) => business.id === businessId)) {
+    const business = businesses.find((candidate) => candidate.id === businessId);
+    if (!business) {
       showMessage('Select a business where you have an active membership.');
       return;
     }
-    setSelectedBusiness(user.uid, businessId);
-    void loadInventory(user);
+    setSelectedBusiness(user.uid, business.id);
+    activeBusiness = business;
+    const pageName = window.location.pathname.split('/').pop() || 'productlist.html';
+    window.location.assign(pageHref(pageName));
   });
 }
 
@@ -169,8 +250,8 @@ function productRows(rows: Product[]): string {
       <td>${formatAmount(product.costPrice)}</td>
       <td>${statusFor(product)}</td>
       <td>
-        <a class="btn btn-sm btn-outline-primary" href="product-details.html?id=${encodeURIComponent(product.id)}">View</a>
-        ${managementActions ? `<a class="btn btn-sm btn-outline-secondary" href="editproduct.html?id=${encodeURIComponent(product.id)}">Edit</a>
+        <a class="btn btn-sm btn-outline-primary" href="${pageHref('product-details.html', product.id)}">View</a>
+        ${managementActions ? `<a class="btn btn-sm btn-outline-secondary" href="${pageHref('editproduct.html', product.id)}">Edit</a>
         <button class="btn btn-sm btn-outline-danger" type="button" data-delete="${escapeHtml(product.id)}">Delete</button>` : ''}
       </td>
     </tr>`).join('');
@@ -224,7 +305,7 @@ function renderProductList(lowStockOnly = false): void {
       <div class="inventory-toolbar">
         <input class="form-control inventory-search" id="inventory-search" type="search" placeholder="Search product name or SKU" aria-label="Search products">
         ${lowStockOnly ? '' : `<select class="form-control" id="stock-filter" aria-label="Filter stock"><option value="all">All stock</option><option value="low">Low stock only</option></select>`}
-        ${canManageInventory() ? '<a class="btn btn-primary" href="addproduct.html">Add product</a>' : ''}
+        ${canManageInventory() ? `<a class="btn btn-primary" href="${pageHref('addproduct.html')}">Add product</a>` : ''}
       </div>
       <div class="inventory-table-wrap">
         <table class="table inventory-table">
@@ -276,7 +357,7 @@ function productFormMarkup(product?: Product): string {
         ${field('costPrice', 'Cost price (minor units)', 'number', 'Enter whole minor currency units.')}
         ${field('sellingPrice', 'Selling price (minor units)', 'number', 'Enter whole minor currency units.')}
         <div class="inventory-form-actions inventory-actions">
-          <a class="btn btn-cancel" href="productlist.html">Cancel</a>
+          <a class="btn btn-cancel" href="${pageHref('productlist.html')}">Cancel</a>
           <button class="btn btn-primary" type="submit">${product ? 'Save changes' : 'Save product'}</button>
         </div>
       </form>
@@ -296,7 +377,7 @@ function bindProductForm(product?: Product): void {
       } else {
         await addProduct(activeBusiness!.id, input);
       }
-      window.location.href = 'productlist.html';
+      window.location.href = pageHref('productlist.html');
     } catch (error) {
       showMessage(error instanceof Error ? error.message : 'Could not save the product.');
       if (button) button.disabled = false;
@@ -305,13 +386,16 @@ function bindProductForm(product?: Product): void {
 }
 
 function renderProductForm(product?: Product): void {
-  renderShell(product ? 'Edit product' : 'Add product', `Business: ${escapeHtml(activeBusiness!.name)}`, productFormMarkup(product));
+  const dashboard = activeBusiness!.slug
+    ? ` · <a href="${escapeHtml(getBusinessUrl(activeBusiness!.slug))}">Dashboard</a>`
+    : '';
+  renderShell(product ? 'Edit product' : 'Add product', `Business: ${escapeHtml(activeBusiness!.name)}${dashboard}`, productFormMarkup(product));
   bindProductForm(product);
 }
 
 function renderDetails(product: Product | undefined): void {
   if (!product) {
-    renderShell('Product not found', `Business: ${escapeHtml(activeBusiness!.name)}`, '<div class="inventory-card">This product no longer exists. <a href="productlist.html">Return to inventory</a>.</div>');
+    renderShell('Product not found', `Business: ${escapeHtml(activeBusiness!.name)}`, `<div class="inventory-card">This product no longer exists. <a href="${pageHref('productlist.html')}">Return to inventory</a>.</div>`);
     return;
   }
   renderShell(product.name, `Business: ${escapeHtml(activeBusiness!.name)}`, `
@@ -323,8 +407,8 @@ function renderDetails(product: Product | undefined): void {
         <dt class="col-sm-4">Cost price (minor units)</dt><dd class="col-sm-8">${formatAmount(product.costPrice)}</dd>
         <dt class="col-sm-4">Selling price (minor units)</dt><dd class="col-sm-8">${formatAmount(product.sellingPrice)}</dd>
       </dl>
-      ${canManageInventory() ? `<a class="btn btn-primary" href="editproduct.html?id=${encodeURIComponent(product.id)}">Edit product</a>` : ''}
-      <a class="btn btn-cancel" href="productlist.html">Back to inventory</a>
+      ${canManageInventory() ? `<a class="btn btn-primary" href="${pageHref('editproduct.html', product.id)}">Edit product</a>` : ''}
+      <a class="btn btn-cancel" href="${pageHref('productlist.html')}">Back to inventory</a>
     </div>`);
 }
 
@@ -372,7 +456,7 @@ async function loadInventory(user?: User): Promise<void> {
     return;
   }
   if (!user) {
-    renderShell('Sign in required', 'Sign in with an authorized business account to manage inventory.', '<div class="inventory-card"><a class="btn btn-primary" href="signin.html">Go to sign in</a></div>');
+    renderShell('Sign in required', 'Sign in with an authorized business account to manage inventory.', `<div class="inventory-card"><a class="btn btn-primary" href="${import.meta.env.BASE_URL}signin.html">Go to sign in</a></div>`);
     return;
   }
 
@@ -383,11 +467,19 @@ async function loadInventory(user?: User): Promise<void> {
       renderBusinessSetup(user);
       return;
     }
-    activeBusiness = getSelectedBusiness(user.uid, businesses);
+    const tenantSlug = getTenantSlugFromLocation();
+    activeBusiness = tenantSlug
+      ? businesses.find((business) => business.slug === tenantSlug) ?? null
+      : getSelectedBusiness(user.uid, businesses);
     if (!activeBusiness) {
+      if (tenantSlug) {
+        renderShell('Business unavailable', 'You do not have an active membership for this business.', `<div class="inventory-card"><a href="${import.meta.env.BASE_URL}">Return home</a></div>`);
+        return;
+      }
       renderBusinessSelection(user, businesses);
       return;
     }
+    setSelectedBusiness(user.uid, activeBusiness.id);
     await renderPage();
   } catch (error) {
     renderShell('Could not load inventory', `Business: ${escapeHtml(activeBusiness?.name ?? 'not selected')}`, '<div class="inventory-card"><p data-load-error></p><button class="btn btn-primary" type="button" id="inventory-retry">Try again</button></div>');

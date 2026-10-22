@@ -140,30 +140,53 @@ service cloud.firestore {
         allow create: if signedIn()
           && request.auth.uid == uid
           && request.resource.data.keys().hasAll(['businessName', 'role', 'active', 'joinedAt'])
-          && request.resource.data.keys().hasOnly(['businessName', 'role', 'active', 'joinedAt'])
+          && request.resource.data.keys().hasOnly(['businessName', 'slug', 'role', 'active', 'joinedAt'])
           && request.resource.data.businessName is string
           && request.resource.data.businessName.size() > 0
           && request.resource.data.businessName.size() <= 100
+          && request.resource.data.slug is string
+          && request.resource.data.slug.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
+          && request.resource.data.slug.size() <= 48
           && request.resource.data.role == 'owner'
           && request.resource.data.active == true
           && request.resource.data.joinedAt is timestamp
           && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
+          && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.slug == request.resource.data.slug
           && getAfter(/databases/$(database)/documents/businesses/$(businessId)/members/$(uid)).data.role == 'owner'
           && getAfter(/databases/$(database)/documents/businesses/$(businessId)/members/$(uid)).data.active == true;
         allow update, delete: if false;
       }
     }
 
+    match /businessSlugs/{slug} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll(['businessId', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['businessId', 'createdAt'])
+        && request.resource.data.businessId is string
+        && request.resource.data.createdAt is timestamp
+        && slug.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
+        && slug.size() <= 48
+        && getAfter(/databases/$(database)/documents/businesses/$(request.resource.data.businessId)).data.ownerId == request.auth.uid
+        && getAfter(/databases/$(database)/documents/businesses/$(request.resource.data.businessId)).data.slug == slug;
+      allow update, delete: if false;
+    }
+
     match /businesses/{businessId} {
       allow read: if isMember(businessId);
       allow create: if signedIn()
-        && request.resource.data.keys().hasAll(['name', 'ownerId', 'createdAt'])
-        && request.resource.data.keys().hasOnly(['name', 'ownerId', 'createdAt'])
+        && request.resource.data.keys().hasAll(['name', 'slug', 'ownerId', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['name', 'slug', 'ownerId', 'createdAt'])
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() <= 100
+        && request.resource.data.slug is string
+        && request.resource.data.slug.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
+        && request.resource.data.slug.size() <= 48
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.createdAt is timestamp
+        && getAfter(/databases/$(database)/documents/businessSlugs/$(request.resource.data.slug)).data.businessId == businessId
         && getAfter(memberPath(businessId)).data.role == 'owner'
         && getAfter(memberPath(businessId)).data.active == true
         && getAfter(membershipIndexPath(request.auth.uid, businessId)).data.role == 'owner'

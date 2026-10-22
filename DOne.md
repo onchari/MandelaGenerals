@@ -25,7 +25,7 @@ Additional implementation work has been added in:
 
 Covered functionality:
 - Spark-compatible atomic business creation through a Firestore batch constrained by `getAfter()` security rules
-- Atomic creation of the business, owner membership, and user membership index
+- Atomic creation of the business, slug claim, owner membership, and user membership index
 - Listing a user's active business memberships
 - Persisting selected business locally for navigation, while Firestore rules remain the authorization source
 - Switching between multiple active business memberships
@@ -39,6 +39,13 @@ Covered functionality:
 - After authentication, the root now shows business setup, a selector for multiple memberships, or a dashboard for the selected business.
 - The business dashboard shows product count, total stock, low-stock count, inventory cost value, recent products, and role-appropriate inventory links.
 - Added the required auth and inventory HTML entries to the Vite build.
+
+### Business-selected tenant addresses
+- Added an editable, name-suggested tenant slug with Firestore availability feedback to both business setup forms.
+- Atomically reserve each new slug alongside its business and owner membership records; Firestore rules make the claim create-only and validate the related bootstrap writes.
+- Show local-host and GitHub Pages URL suggestions. GitHub Pages uses a tenant path because it does not provide project-site wildcard subdomains.
+- Preserve tenant selection in inventory links and add a `404.html` app fallback for GitHub Pages tenant dashboard paths.
+- Preserve access to existing no-slug businesses through their legacy active-business membership record; they do not receive an address automatically.
 
 ### Code quality / validation
 - The project compiles successfully with the existing TypeScript + Vite setup.
@@ -73,6 +80,7 @@ The app has been opened locally and the safe, unauthenticated checks have been c
 - After the user supplied the direct-client rules matching the local rules, reloaded the signed-in browser and retried business creation as “Inventory Validation 20261022 2008.” Firestore still returned “Missing or insufficient permissions”; the business setup form remains visible. No product workflow was attempted because no active business was created.
 - The implementation has since been changed to use Spark-compatible atomic business creation and the app's `products` schema. The stricter membership/role rules are local only and have not been deployed; browser workflow validation must wait until deployment.
 - The Firestore rules preserve the previously shared legacy collection paths and constraints while adding the `products` schema.
+- These latest tenant-address changes are local only and have not been deployed to Firebase or GitHub Pages. The slug availability query and atomic batch still need validation against the deployed rules.
 
 #### Validation blocked
 The current Firestore rules have not been deployed. Firebase CLI authentication previously failed, so business creation may still be denied until the updated rules are deployed to `mandelageneralshop`. This Spark-compatible implementation does not require Cloud Functions or Blaze. Deploy the reviewed Firestore rules, then validate business creation and product add, list, edit, delete, and report/filter behavior. See [Step 1.md](Step%201.md) for the checklist.

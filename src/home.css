@@ -93,6 +93,11 @@ button, input { font: inherit; }
 .workspace-form label { color: #344054; font-size: 14px; font-weight: 650; }
 .workspace-form input { height: 46px; width: 100%; padding: 0 12px; border: 1px solid #d0d5dd; border-radius: 7px; color: #101828; outline-color: #84adff; }
 .workspace-form .home-button { margin-top: 8px; }
+.slug-status { margin: -3px 0 0; color: #667085; font-size: 13px; }
+.slug-available { color: #027a48; }
+.slug-error { color: #b42318; }
+.slug-suggestions { display: grid; gap: 6px; color: #667085; font-size: 12px; line-height: 1.5; }
+.slug-suggestions code { overflow-wrap: anywhere; color: #344054; }
 .workspace-error { color: #b42318; font-size: 14px; line-height: 1.5; }
 .workspace-logout { border: 0; background: transparent; color: #667085; cursor: pointer; font-size: 14px; }
 .workspace-logout:hover { color: #b42318; }
