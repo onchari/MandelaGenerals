@@ -1,6 +1,11 @@
-import { httpsCallable } from 'firebase/functions';
-import { collection, getDocs } from 'firebase/firestore';
-import { db, functions, assertFirebaseReady } from '../config/firebase';
+import {
+  collection,
+  doc,
+  getDocs,
+  serverTimestamp,
+  writeBatch,
+} from 'firebase/firestore';
+import { auth, db, assertFirebaseReady } from '../config/firebase';
 
 export interface ActiveBusiness {
   id: string;
@@ -58,29 +63,42 @@ export function setSelectedBusiness(userId: string, businessId: string): void {
 export async function createBusiness(name: string): Promise<ActiveBusiness> {
   assertFirebaseReady();
 
-  if (!functions) {
-    throw new Error('Firebase Functions is not configured.');
+  const authInstance = auth;
+  const dbInstance = db;
+  if (!authInstance?.currentUser || !dbInstance) {
+    throw new Error('Sign in before creating a business.');
   }
 
   const normalizedName = name.trim();
   if (!normalizedName) {
     throw new Error('Business name is required.');
   }
-
-  const call = httpsCallable<{ name: string }, { id: string; name: string }>(
-    functions,
-    'createBusiness',
-  );
-  const result = await call({ name: normalizedName });
-
-  if (
-    typeof result.data.id !== 'string' ||
-    !result.data.id ||
-    typeof result.data.name !== 'string' ||
-    !result.data.name.trim()
-  ) {
-    throw new Error('Business creation returned invalid data.');
+  if (normalizedName.length > 100) {
+    throw new Error('Business name must be 100 characters or fewer.');
   }
 
-  return { id: result.data.id, name: result.data.name, role: 'owner' };
+  const ownerId = authInstance.currentUser.uid;
+  const businessRef = doc(collection(dbInstance, 'businesses'));
+  const batch = writeBatch(dbInstance);
+  const timestamp = serverTimestamp();
+
+  batch.set(businessRef, {
+    name: normalizedName,
+    ownerId,
+    createdAt: timestamp,
+  });
+  batch.set(doc(dbInstance, 'businesses', businessRef.id, 'members', ownerId), {
+    role: 'owner',
+    active: true,
+    joinedAt: timestamp,
+  });
+  batch.set(doc(dbInstance, 'users', ownerId, 'businessMemberships', businessRef.id), {
+    businessName: normalizedName,
+    role: 'owner',
+    active: true,
+    joinedAt: timestamp,
+  });
+  await batch.commit();
+
+  return { id: businessRef.id, name: normalizedName, role: 'owner' };
 }

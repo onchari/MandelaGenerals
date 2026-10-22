@@ -24,7 +24,7 @@ Additional implementation work has been added in:
 - [src/modules/inventory/types.ts](src/modules/inventory/types.ts)
 
 Covered functionality:
-- Trusted business creation through an authenticated callable Cloud Function
+- Spark-compatible atomic business creation through a Firestore batch constrained by `getAfter()` security rules
 - Atomic creation of the business, owner membership, and user membership index
 - Listing a user's active business memberships
 - Persisting selected business locally for navigation, while Firestore rules remain the authorization source
@@ -71,11 +71,11 @@ The app has been opened locally and the safe, unauthenticated checks have been c
 - Added the existing `firestore.rules` file to the Firebase CLI configuration in [firebase.json](firebase.json), so a future Firebase deployment can include those rules.
 - Attempted to deploy only Firestore rules to the configured project `mandelageneralshop`. Deployment could not authenticate: the Firebase CLI has a saved account but cannot access projects or perform the deploy. No remote rules were changed.
 - After the user supplied the direct-client rules matching the local rules, reloaded the signed-in browser and retried business creation as “Inventory Validation 20261022 2008.” Firestore still returned “Missing or insufficient permissions”; the business setup form remains visible. No product workflow was attempted because no active business was created.
-- The implementation has since been changed to use callable Cloud Function business creation and the app's `products` schema. The function and stricter membership/role rules are local only and have not been deployed; browser workflow validation must wait until deployment to a test project.
-- The Cloud Function and Firestore rules preserve the previously shared legacy collection paths and constraints while adding the `products` schema.
+- The implementation has since been changed to use Spark-compatible atomic business creation and the app's `products` schema. The stricter membership/role rules are local only and have not been deployed; browser workflow validation must wait until deployment.
+- The Firestore rules preserve the previously shared legacy collection paths and constraints while adding the `products` schema.
 
 #### Validation blocked
-The current callable function and Firestore rules have not been deployed. Firebase CLI authentication previously failed, so do not expect the current browser business-creation attempt to work yet. Deploy the reviewed function and rules to a dedicated/test Firebase project first, then validate business creation and product add, list, edit, delete, and report/filter behavior. See [Step 1.md](Step%201.md) for the ordered checklist and deploy commands.
+The current Firestore rules have not been deployed. Firebase CLI authentication previously failed, so business creation may still be denied until the updated rules are deployed to `mandelageneralshop`. This Spark-compatible implementation does not require Cloud Functions or Blaze. Deploy the reviewed Firestore rules, then validate business creation and product add, list, edit, delete, and report/filter behavior. See [Step 1.md](Step%201.md) for the checklist.
 
 ### 2. Business selection and multi-tenant logic
 Basic membership loading, single-business auto-selection, multiple-business selection, and switching are implemented. Still needed:
