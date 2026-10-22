@@ -48,6 +48,13 @@ Covered functionality:
 - Preserve tenant selection in inventory links and add a `404.html` app fallback for GitHub Pages tenant dashboard paths.
 - Preserve access to existing no-slug businesses through their legacy active-business membership record; they do not receive an address automatically.
 
+### Platform administration
+- Added a separate platform-admin identity using a protected `platformAdmins/{uid}` Firestore record (`enabled: true`, `role: "platformAdmin"`).
+- After login, platform admins use the same index dashboard template with a platform-focused sidebar, platform overview counts, and businesses/users directory views.
+- Platform admin status cannot be granted by the client. Firestore rules allow users to read only their own admin marker and deny client writes to the platform-admin collection.
+- Platform admins can read business and user-profile documents, but are not automatically granted access to tenant subcollections or tenant inventory.
+- Plans/subscriptions, platform settings, and audit/activity are visible menu entries but remain placeholders until workflows and data models are specified.
+
 ### Code quality / validation
 - The project compiles successfully with the existing TypeScript + Vite setup.
 - Build validation command used: `npm run build`

@@ -5,6 +5,17 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function platformAdminPath(uid) {
+      return /databases/$(database)/documents/platformAdmins/$(uid);
+    }
+
+    function isPlatformAdmin() {
+      return signedIn()
+        && exists(platformAdminPath(request.auth.uid))
+        && get(platformAdminPath(request.auth.uid)).data.enabled == true
+        && get(platformAdminPath(request.auth.uid)).data.role == 'platformAdmin';
+    }
+
     function memberPath(businessId) {
       return /databases/$(database)/documents/businesses/$(businessId)/members/$(request.auth.uid);
     }
@@ -122,7 +133,7 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow read: if signedIn() && request.auth.uid == uid;
+      allow read: if (signedIn() && request.auth.uid == uid) || isPlatformAdmin();
       allow create: if signedIn()
         && request.auth.uid == uid
         && request.resource.data.keys().hasOnly(['displayName', 'email', 'createdAt'])
@@ -158,6 +169,11 @@ service cloud.firestore {
       }
     }
 
+    match /platformAdmins/{uid} {
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow list, create, update, delete: if false;
+    }
+
     match /businessSlugs/{slug} {
       allow get: if signedIn();
       allow list: if false;
@@ -174,7 +190,7 @@ service cloud.firestore {
     }
 
     match /businesses/{businessId} {
-      allow read: if isMember(businessId);
+      allow read: if isMember(businessId) || isPlatformAdmin();
       allow create: if signedIn()
         && request.resource.data.keys().hasAll(['name', 'slug', 'ownerId', 'createdAt'])
         && request.resource.data.keys().hasOnly(['name', 'slug', 'ownerId', 'createdAt'])

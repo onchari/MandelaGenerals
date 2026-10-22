@@ -5,9 +5,12 @@ import {
   getBusinessPageUrl,
   getBusinessUrl,
   getBusinessUrlSuggestions,
+  getPlatformBusinesses,
+  getPlatformUsers,
   getTenantSlugFromLocation,
   getSelectedBusiness,
   getUserBusinesses,
+  isPlatformAdmin,
   isBusinessSlugAvailable,
   suggestBusinessSlug,
   setSelectedBusiness,
@@ -334,12 +337,120 @@ function showBusinessTemplate(user: User, business: ActiveBusiness): void {
   bindLogout();
 }
 
+function showPlatformAdminTemplate(user: User): void {
+  const userName = appShell?.querySelector<HTMLElement>('#template-user-name');
+  const userRole = appShell?.querySelector<HTMLElement>('#template-user-role');
+  const menu = appShell?.querySelector<HTMLElement>('#sidebar-menu');
+  if (userName) userName.textContent = displayName(user);
+  if (userRole) userRole.textContent = 'Platform administrator';
+  if (menu) {
+    const basePath = import.meta.env.BASE_URL;
+    const items = [
+      ['overview', 'Platform Overview', 'dashboard.svg'],
+      ['businesses', 'Businesses / Tenants', 'product.svg'],
+      ['users', 'Users', 'users1.svg'],
+      ['plans', 'Plans / Subscriptions', 'purchase1.svg'],
+      ['settings', 'Platform Settings', 'settings.svg'],
+      ['audit', 'Audit / Activity Logs', 'time.svg'],
+    ] as const;
+    menu.innerHTML = `<ul>
+      <li class="sidebar-title">PLATFORM ADMIN</li>
+      ${items.map(([view, label, icon]) => `
+        <li class="${new URLSearchParams(window.location.search).get('platform') === view ? 'active' : ''}">
+          <a href="${basePath}?platform=${view}" data-platform-view="${view}">
+            <img src="${basePath}assets/img/icons/${icon}" alt=""><span> ${label}</span>
+          </a>
+        </li>`).join('')}
+    </ul>`;
+  }
+  bindLogout();
+}
+
+async function renderPlatformAdminPage(user: User): Promise<void> {
+  const view = new URLSearchParams(window.location.search).get('platform') || 'overview';
+  const titles: Record<string, string> = {
+    overview: 'Platform overview',
+    businesses: 'Businesses / tenants',
+    users: 'Platform users',
+    plans: 'Plans / subscriptions',
+    settings: 'Platform settings',
+    audit: 'Audit / activity logs',
+  };
+  const title = titles[view] ?? titles.overview;
+  setPage(title, '<div class="home-loading">Loading platform administration…</div>');
+
+  try {
+    if (view === 'businesses') {
+      const businesses = await getPlatformBusinesses();
+      setPage(title, `
+        <div class="content">
+          <div class="page-header"><div class="page-title"><h4>${title}</h4><h6>All business workspaces registered on the platform.</h6></div></div>
+          <div class="card"><div class="card-body"><div class="table-responsive">
+            <table class="table"><thead><tr><th>Business</th><th>Tenant slug</th><th>Owner UID</th><th>Business ID</th></tr></thead>
+            <tbody>${businesses.length ? businesses.map((business) => `<tr><td>${escapeHtml(business.name)}</td><td>${escapeHtml(business.slug || 'Not assigned')}</td><td>${escapeHtml(business.ownerId)}</td><td>${escapeHtml(business.id)}</td></tr>`).join('') : '<tr><td colspan="4">No businesses have been created.</td></tr>'}</tbody>
+            </table>
+          </div></div></div>
+          <p class="text-muted">Business editing, suspension, and deletion are not enabled from this view.</p>
+        </div>`);
+      return;
+    }
+
+    if (view === 'users') {
+      const users = await getPlatformUsers();
+      setPage(title, `
+        <div class="content">
+          <div class="page-header"><div class="page-title"><h4>${title}</h4><h6>Registered accounts on the platform.</h6></div></div>
+          <div class="card"><div class="card-body"><div class="table-responsive">
+            <table class="table"><thead><tr><th>Name</th><th>Email</th><th>User ID</th></tr></thead>
+            <tbody>${users.length ? users.map((platformUser) => `<tr><td>${escapeHtml(platformUser.displayName)}</td><td>${escapeHtml(platformUser.email || 'Not provided')}</td><td>${escapeHtml(platformUser.id)}</td></tr>`).join('') : '<tr><td colspan="3">No user profiles have been created.</td></tr>'}</tbody>
+            </table>
+          </div></div></div>
+          <p class="text-muted">Account editing, suspension, and platform-admin assignment are not enabled from this view.</p>
+        </div>`);
+      return;
+    }
+
+    if (view !== 'overview') {
+      setPage(title, `
+        <div class="content">
+          <div class="page-header"><div class="page-title"><h4>${title}</h4><h6>Platform administration</h6></div></div>
+          <div class="card"><div class="card-body">
+            <p>This section is reserved in the platform menu. Its data model and management actions have not been configured yet.</p>
+          </div></div>
+        </div>`);
+      return;
+    }
+
+    const [businesses, users] = await Promise.all([getPlatformBusinesses(), getPlatformUsers()]);
+    setPage(title, `
+      <div class="content">
+        <div class="page-header"><div class="page-title"><h4>Platform overview</h4><h6>Platform-wide account and tenant summary.</h6></div></div>
+        <div class="row">
+          <div class="col-lg-3 col-sm-6 col-12"><div class="dash-widget"><div class="dash-widgetcontent"><h5>${businesses.length.toLocaleString()}</h5><h6>Businesses / tenants</h6></div></div></div>
+          <div class="col-lg-3 col-sm-6 col-12"><div class="dash-widget"><div class="dash-widgetcontent"><h5>${users.length.toLocaleString()}</h5><h6>Registered users</h6></div></div></div>
+        </div>
+        <div class="card"><div class="card-body">
+          <h4 class="card-title">Platform controls</h4>
+          <p>Use the platform menu to review businesses and accounts. Subscription plans, platform settings, and audit records are not configured yet.</p>
+        </div></div>
+      </div>`);
+  } catch (error) {
+    renderError(error instanceof Error ? error.message : 'Could not load platform administration.');
+  }
+}
+
 async function renderAuthenticatedHome(user: User, preferredSlug?: string): Promise<void> {
   setPage('Loading workspace', '<section class="workspace-page"><div class="home-loading">Loading your business workspace…</div></section>');
   const userName = appShell?.querySelector<HTMLElement>('#template-user-name');
   if (userName) userName.textContent = displayName(user);
   bindLogout();
   try {
+    if (await isPlatformAdmin(user.uid)) {
+      showPlatformAdminTemplate(user);
+      await renderPlatformAdminPage(user);
+      return;
+    }
+
     const businesses = await getUserBusinesses(user.uid);
     if (businesses.length === 0) {
       renderSetup(user);

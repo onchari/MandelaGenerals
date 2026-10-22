@@ -47,6 +47,15 @@
 - The slug claim reserves a name in this Firebase project, not a domain name. An availability check is advisory; the atomic create-only claim is authoritative.
 - Existing businesses without a slug keep working through the legacy active-business membership fallback, but do not receive a tenant URL automatically.
 
+### Platform administrator access
+
+- Platform-admin authorization uses a manually provisioned Firestore document: `platformAdmins/{firebaseAuthUid}` with `enabled: true` and `role: "platformAdmin"`.
+- Create or revoke that document only through Firebase Console or a trusted administrative process. Client-side create/update/delete are denied by Firestore rules.
+- To grant access, publish the rules, then in the `mandelageneralshop` Firestore console create `platformAdmins/{UID}` using the platform administrator's Firebase Authentication UID and fields `enabled: true` and `role: "platformAdmin"`. Set `enabled: false` or delete the record to revoke it.
+- Platform administrators can read the platform's business and user profile documents. They do not automatically gain membership in business subcollections or access to inventory operations.
+- The platform overview, businesses list, and users list are wired to Firestore. Plans/subscriptions, platform settings, and audit/activity menu entries are placeholders until their data models and workflows are defined.
+- Publish the updated Firestore rules before provisioning or testing this role.
+
 ### Step 2 — Memberships and business selection
 
 - [x] Load the signed-in user's business memberships.

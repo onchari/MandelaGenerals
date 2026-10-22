@@ -15,6 +15,19 @@ export interface ActiveBusiness {
   role: 'owner' | 'admin' | 'manager' | 'cashier' | 'staff';
 }
 
+export interface PlatformBusiness {
+  id: string;
+  name: string;
+  slug: string;
+  ownerId: string;
+}
+
+export interface PlatformUser {
+  id: string;
+  displayName: string;
+  email: string;
+}
+
 const roleValues = ['owner', 'admin', 'manager', 'cashier', 'staff'] as const;
 const activeBusinessStorageKey = (userId: string): string => `activeBusinessId:${userId}`;
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -82,6 +95,46 @@ export async function getUserBusinesses(userId: string): Promise<ActiveBusiness[
     slug: typeof businessSnapshot.data().slug === 'string' ? businessSnapshot.data().slug : '',
     role,
   }];
+}
+
+export async function isPlatformAdmin(userId: string): Promise<boolean> {
+  assertFirebaseReady();
+  const dbInstance = db;
+  if (!dbInstance) throw new Error('Firebase is not configured.');
+  const adminSnapshot = await getDoc(doc(dbInstance, 'platformAdmins', userId));
+  const data = adminSnapshot.data();
+  return adminSnapshot.exists() && data?.enabled === true && data.role === 'platformAdmin';
+}
+
+export async function getPlatformBusinesses(): Promise<PlatformBusiness[]> {
+  assertFirebaseReady();
+  const dbInstance = db;
+  if (!dbInstance) throw new Error('Firebase is not configured.');
+  const snapshot = await getDocs(collection(dbInstance, 'businesses'));
+  return snapshot.docs.map((business) => {
+    const data = business.data();
+    return {
+      id: business.id,
+      name: typeof data.name === 'string' ? data.name : 'Unnamed business',
+      slug: typeof data.slug === 'string' ? data.slug : '',
+      ownerId: typeof data.ownerId === 'string' ? data.ownerId : 'Unknown',
+    };
+  });
+}
+
+export async function getPlatformUsers(): Promise<PlatformUser[]> {
+  assertFirebaseReady();
+  const dbInstance = db;
+  if (!dbInstance) throw new Error('Firebase is not configured.');
+  const snapshot = await getDocs(collection(dbInstance, 'users'));
+  return snapshot.docs.map((user) => {
+    const data = user.data();
+    return {
+      id: user.id,
+      displayName: typeof data.displayName === 'string' ? data.displayName : 'Unnamed user',
+      email: typeof data.email === 'string' ? data.email : '',
+    };
+  });
 }
 
 export function getSelectedBusiness(
