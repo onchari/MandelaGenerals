@@ -1,0 +1,54 @@
+.account-page {
+  min-height: 100vh;
+  background: #f7f9fc;
+}
+
+.account-page .main-wrapper,
+.account-page .account-content,
+.account-page .login-wrapper {
+  width: 100%;
+  min-height: 100vh;
+}
+
+.account-page .account-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.account-page .login-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: auto;
+  overflow: visible;
+}
+
+.account-page .login-content {
+  width: min(100%, 480px);
+  height: auto;
+  min-height: 0;
+  padding: 36px 28px;
+  overflow: visible;
+  display: block;
+}
+
+.account-page .login-userset {
+  width: 100%;
+}
+
+.account-page .login-logo {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.account-page .login-logo img {
+  max-width: min(100%, 220px);
+}
+
+@media (max-width: 575px) {
+  .account-page .login-content {
+    padding: 28px 20px;
+  }
+}

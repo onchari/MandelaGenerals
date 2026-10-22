@@ -44,16 +44,25 @@ Covered functionality:
 ### Business-selected tenant addresses
 - Added an editable, name-suggested tenant slug with Firestore availability feedback to both business setup forms.
 - Atomically reserve each new slug alongside its business and owner membership records; Firestore rules make the claim create-only and validate the related bootstrap writes.
-- Show local-host and GitHub Pages URL suggestions. GitHub Pages uses a tenant path because it does not provide project-site wildcard subdomains.
+- Show same-origin local-host and GitHub Pages tenant path suggestions. GitHub Pages uses a path because it does not provide project-site wildcard subdomains.
 - Preserve tenant selection in inventory links and add a `404.html` app fallback for GitHub Pages tenant dashboard paths.
-- Preserve access to existing no-slug businesses through their legacy active-business membership record; they do not receive an address automatically.
+- Preserve access to existing no-slug businesses through active membership lookup; owners are prompted to choose and claim an available tenant address, while other members are asked to contact the owner.
 
 ### Platform administration
 - Added a separate platform-admin identity using a protected `platformAdmins/{uid}` Firestore record (`enabled: true`, `role: "platformAdmin"`).
 - After login, platform admins use the same index dashboard template with a platform-focused sidebar, platform overview counts, and businesses/users directory views.
 - Platform admin status cannot be granted by the client. Firestore rules allow users to read only their own admin marker and deny client writes to the platform-admin collection.
 - Platform admins can read business and user-profile documents, but are not automatically granted access to tenant subcollections or tenant inventory.
+- Added a platform-admin-only overview action to initialize the shared `Demo` tenant (`demo`) and assign existing Firestore user profiles with no membership documents as staff. The platform admin who runs it owns Demo; those users share its data. Accounts without Firestore user-profile documents cannot be enumerated from the client app.
+- The Demo initialization is repeatable: it does not reassign users who already have membership documents, and it refuses to use `demo` if another business or owner holds that slug.
 - Plans/subscriptions, platform settings, and audit/activity are visible menu entries but remain placeholders until workflows and data models are specified.
+
+### Login-to-tenant routing
+- After login, resolve the user's active memberships and route to the tenant URL for a single membership; present the business picker for multiple memberships. When the sign-in link came from a tenant page, return directly to that tenant path; same-origin routing updates the URL in place without loading a second landing page.
+- Business creation associates the creator through owner membership records. Accounts without a membership are not silently attached to an existing tenant.
+- Legacy business owners can claim a tenant address; the business, unique slug record, and owner membership index are updated atomically, and other members resolve the slug from the business record.
+- A tenant URL rejects accounts without active membership. Local development and GitHub Pages use same-origin paths, retaining Firebase Auth persistence.
+- Once the platform admin runs Demo initialization, assigned users are routed to `/b/demo/` (under the configured app base path) on their next login or page load.
 
 ### Code quality / validation
 - The project compiles successfully with the existing TypeScript + Vite setup.
@@ -89,6 +98,7 @@ The app has been opened locally and the safe, unauthenticated checks have been c
 - The implementation has since been changed to use Spark-compatible atomic business creation and the app's `products` schema. The stricter membership/role rules are local only and have not been deployed; browser workflow validation must wait until deployment.
 - The Firestore rules preserve the previously shared legacy collection paths and constraints while adding the `products` schema.
 - These latest tenant-address changes are local only and have not been deployed to Firebase or GitHub Pages. The slug availability query and atomic batch still need validation against the deployed rules.
+- The Demo migration and related Firestore rule changes are local only. Deploy the updated rules before using the platform overview action; then run it once and sign in as an assigned user to confirm the `/b/demo/` redirect.
 
 #### Validation blocked
 The current Firestore rules have not been deployed. Firebase CLI authentication previously failed, so business creation may still be denied until the updated rules are deployed to `mandelageneralshop`. This Spark-compatible implementation does not require Cloud Functions or Blaze. Deploy the reviewed Firestore rules, then validate business creation and product add, list, edit, delete, and report/filter behavior. See [Step 1.md](Step%201.md) for the checklist.

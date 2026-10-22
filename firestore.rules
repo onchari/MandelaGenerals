@@ -30,6 +30,12 @@ service cloud.firestore {
         && get(memberPath(businessId)).data.active == true;
     }
 
+    function isDemoTenant(businessId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/businesses/$(businessId))
+        && get(/databases/$(database)/documents/businesses/$(businessId)).data.slug == 'demo';
+    }
+
     function hasRole(businessId, roles) {
       return isMember(businessId)
         && get(memberPath(businessId)).data.role in roles;
@@ -147,25 +153,48 @@ service cloud.firestore {
       allow delete: if false;
 
       match /businessMemberships/{businessId} {
-        allow read: if signedIn() && request.auth.uid == uid;
-        allow create: if signedIn()
+        allow read: if (signedIn() && request.auth.uid == uid) || isPlatformAdmin();
+        allow create: if (
+            signedIn()
+            && request.auth.uid == uid
+            && request.resource.data.keys().hasAll(['businessName', 'role', 'active', 'joinedAt'])
+            && request.resource.data.keys().hasOnly(['businessName', 'slug', 'role', 'active', 'joinedAt'])
+            && request.resource.data.businessName is string
+            && request.resource.data.businessName.size() > 0
+            && request.resource.data.businessName.size() <= 100
+            && request.resource.data.slug is string
+            && request.resource.data.slug.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
+            && request.resource.data.slug.size() <= 48
+            && request.resource.data.role == 'owner'
+            && request.resource.data.active == true
+            && request.resource.data.joinedAt is timestamp
+            && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
+            && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.slug == request.resource.data.slug
+            && getAfter(/databases/$(database)/documents/businesses/$(businessId)/members/$(uid)).data.role == 'owner'
+            && getAfter(/databases/$(database)/documents/businesses/$(businessId)/members/$(uid)).data.active == true
+          )
+          || (
+            isPlatformAdmin()
+            && isDemoTenant(businessId)
+            && request.resource.data.keys().hasAll(['businessName', 'slug', 'role', 'active', 'joinedAt'])
+            && request.resource.data.keys().hasOnly(['businessName', 'slug', 'role', 'active', 'joinedAt'])
+            && request.resource.data.businessName == 'Demo'
+            && request.resource.data.slug == 'demo'
+            && request.resource.data.role == 'staff'
+            && request.resource.data.active == true
+            && request.resource.data.joinedAt is timestamp
+          );
+        allow update: if signedIn()
           && request.auth.uid == uid
-          && request.resource.data.keys().hasAll(['businessName', 'role', 'active', 'joinedAt'])
-          && request.resource.data.keys().hasOnly(['businessName', 'slug', 'role', 'active', 'joinedAt'])
-          && request.resource.data.businessName is string
-          && request.resource.data.businessName.size() > 0
-          && request.resource.data.businessName.size() <= 100
+          && isOwner(businessId)
+          && resource.data.role == 'owner'
+          && resource.data.active == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slug'])
           && request.resource.data.slug is string
           && request.resource.data.slug.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
           && request.resource.data.slug.size() <= 48
-          && request.resource.data.role == 'owner'
-          && request.resource.data.active == true
-          && request.resource.data.joinedAt is timestamp
-          && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
-          && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.slug == request.resource.data.slug
-          && getAfter(/databases/$(database)/documents/businesses/$(businessId)/members/$(uid)).data.role == 'owner'
-          && getAfter(/databases/$(database)/documents/businesses/$(businessId)/members/$(uid)).data.active == true;
-        allow update, delete: if false;
+          && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.slug == request.resource.data.slug;
+        allow delete: if false;
       }
     }
 
@@ -209,24 +238,48 @@ service cloud.firestore {
         && getAfter(membershipIndexPath(request.auth.uid, businessId)).data.active == true;
       allow update: if isOwner(businessId)
         && request.resource.data.ownerId == resource.data.ownerId
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
-        && request.resource.data.name is string
-        && request.resource.data.name.size() > 0
-        && request.resource.data.name.size() <= 100;
+        && (
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name'])
+            && request.resource.data.name is string
+            && request.resource.data.name.size() > 0
+            && request.resource.data.name.size() <= 100
+          )
+          || (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slug'])
+            && (!resource.data.keys().hasAny(['slug']) || resource.data.slug == '')
+            && request.resource.data.slug is string
+            && request.resource.data.slug.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
+            && request.resource.data.slug.size() <= 48
+            && getAfter(/databases/$(database)/documents/businessSlugs/$(request.resource.data.slug)).data.businessId == businessId
+            && getAfter(membershipIndexPath(request.auth.uid, businessId)).data.slug == request.resource.data.slug
+          )
+        );
       allow delete: if false;
 
       match /members/{uid} {
         allow read: if isMember(businessId);
-        allow create: if signedIn()
-          && uid == request.auth.uid
-          && request.resource.data.keys().hasAll(['role', 'active', 'joinedAt'])
-          && request.resource.data.keys().hasOnly(['role', 'active', 'joinedAt'])
-          && request.resource.data.role == 'owner'
-          && request.resource.data.active == true
-          && request.resource.data.joinedAt is timestamp
-          && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
-          && getAfter(membershipIndexPath(request.auth.uid, businessId)).data.role == 'owner'
-          && getAfter(membershipIndexPath(request.auth.uid, businessId)).data.active == true;
+        allow create: if (
+            signedIn()
+            && uid == request.auth.uid
+            && request.resource.data.keys().hasAll(['role', 'active', 'joinedAt'])
+            && request.resource.data.keys().hasOnly(['role', 'active', 'joinedAt'])
+            && request.resource.data.role == 'owner'
+            && request.resource.data.active == true
+            && request.resource.data.joinedAt is timestamp
+            && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
+            && getAfter(membershipIndexPath(request.auth.uid, businessId)).data.role == 'owner'
+            && getAfter(membershipIndexPath(request.auth.uid, businessId)).data.active == true
+          )
+          || (
+            isPlatformAdmin()
+            && isDemoTenant(businessId)
+            && request.resource.data.keys().hasAll(['role', 'active', 'joinedAt'])
+            && request.resource.data.keys().hasOnly(['role', 'active', 'joinedAt'])
+            && request.resource.data.role == 'staff'
+            && request.resource.data.active == true
+            && request.resource.data.joinedAt is timestamp
+          );
         allow update, delete: if false;
       }
 

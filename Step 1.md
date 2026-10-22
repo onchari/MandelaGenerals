@@ -41,11 +41,11 @@
 
 ### Tenant addresses
 
-- Local development uses `http://{slug}.localhost:{port}/MandelaGenerals/`. Sign in separately on the tenant host if needed because browser authentication persistence is origin-scoped.
+- Local development uses a same-origin path: `http://localhost:{port}/MandelaGenerals/b/{slug}/`. This keeps Firebase Auth persistence during tenant routing.
 - GitHub Pages uses `https://onchari.github.io/MandelaGenerals/b/{slug}/`; GitHub Pages does not provide wildcard subdomains for this project site. The built `404.html` loads the app at that path.
 - A custom `{slug}.your-domain` address is not claimed to be available. It requires a domain the owner controls, wildcard DNS, and hosting configured for tenant routing.
 - The slug claim reserves a name in this Firebase project, not a domain name. An availability check is advisory; the atomic create-only claim is authoritative.
-- Existing businesses without a slug keep working through the legacy active-business membership fallback, but do not receive a tenant URL automatically.
+- Existing businesses without a slug keep working through active membership lookup. An owner is prompted to choose an available slug before the tenant workspace opens; other members are told to ask the owner to claim its address.
 
 ### Platform administrator access
 
@@ -53,8 +53,19 @@
 - Create or revoke that document only through Firebase Console or a trusted administrative process. Client-side create/update/delete are denied by Firestore rules.
 - To grant access, publish the rules, then in the `mandelageneralshop` Firestore console create `platformAdmins/{UID}` using the platform administrator's Firebase Authentication UID and fields `enabled: true` and `role: "platformAdmin"`. Set `enabled: false` or delete the record to revoke it.
 - Platform administrators can read the platform's business and user profile documents. They do not automatically gain membership in business subcollections or access to inventory operations.
+- The platform overview includes an explicit one-time-safe action to create the shared `Demo` tenant (`demo`) and add existing Firestore user profiles with no membership documents as `staff`. The running platform admin owns the tenant. Those users share Demo's business data; user accounts without a Firestore profile are not discoverable by this client-only migration.
+- The migration can only run after publishing the updated rules. It refuses to reuse `demo` if that slug belongs to a different business or owner.
 - The platform overview, businesses list, and users list are wired to Firestore. Plans/subscriptions, platform settings, and audit/activity menu entries are placeholders until their data models and workflows are defined.
 - Publish the updated Firestore rules before provisioning or testing this role.
+
+### Login-to-tenant routing
+
+- On successful login from a tenant page, return directly to that tenant path. Otherwise resolve active memberships and route a sole membership to its tenant path; update same-origin routes in place so the user sees one landing page. When multiple memberships exist, require the user to choose one.
+- Selecting or creating a business records the selected business locally for navigation, but membership documents and Firestore rules remain the authorization source.
+- A user with no membership at the main app URL sees business setup and becomes the owner/member when the business is created. Opening a tenant URL without membership shows an unavailable message; it does not silently attach the account.
+- An owner of a legacy business with no slug can choose and claim its tenant address; the atomic claim updates the business, unique slug record, and owner's membership index. Existing members resolve the slug from the business record.
+- Existing registered users with no membership can be assigned to the shared Demo tenant by a platform admin from the overview. They are added as staff and routed to the Demo tenant on their next app load.
+- Tenant routing on local development and GitHub Pages uses same-origin paths and retains Firebase Auth persistence.
 
 ### Step 2 — Memberships and business selection
 

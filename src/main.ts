@@ -7,6 +7,8 @@ import {
   getBusinessUrlSuggestions,
   getPlatformBusinesses,
   getPlatformUsers,
+  assignExistingUsersToDemoTenant,
+  claimBusinessSlug,
   getTenantSlugFromLocation,
   getSelectedBusiness,
   getUserBusinesses,
@@ -43,13 +45,20 @@ function setPage(title: string, html: string): void {
 }
 
 function renderHome(): void {
+  const tenantSlug = getTenantSlugFromLocation();
+  const signInUrl = new URL(`${import.meta.env.BASE_URL}signin.html`, window.location.origin);
+  const signUpUrl = new URL(`${import.meta.env.BASE_URL}signup.html`, window.location.origin);
+  if (tenantSlug) {
+    signInUrl.searchParams.set('tenant', tenantSlug);
+    signUpUrl.searchParams.set('tenant', tenantSlug);
+  }
   setPage('Business workspace', `
     <section class="home-page">
       <header class="home-nav">
         <a class="home-brand" href="${import.meta.env.BASE_URL}">Mandela Generals</a>
         <nav aria-label="Account">
-          <a class="home-link" href="${import.meta.env.BASE_URL}signin.html">Log in</a>
-          <a class="home-button home-button-small" href="${import.meta.env.BASE_URL}signup.html">Create account</a>
+          <a class="home-link" href="${escapeHtml(signInUrl.pathname + signInUrl.search)}">Log in</a>
+          <a class="home-button home-button-small" href="${escapeHtml(signUpUrl.pathname + signUpUrl.search)}">Create account</a>
         </nav>
       </header>
       <section class="home-hero">
@@ -58,8 +67,8 @@ function renderHome(): void {
           <h1>Run your business from one clear dashboard.</h1>
           <p class="home-intro">Manage products, stock levels, and inventory reports in a workspace scoped to your business.</p>
           <div class="home-hero-actions">
-            <a class="home-button" href="${import.meta.env.BASE_URL}signup.html">Get started</a>
-            <a class="home-secondary-button" href="${import.meta.env.BASE_URL}signin.html">Log in to your workspace</a>
+            <a class="home-button" href="${escapeHtml(signUpUrl.pathname + signUpUrl.search)}">Get started</a>
+            <a class="home-secondary-button" href="${escapeHtml(signInUrl.pathname + signInUrl.search)}">Log in to your workspace</a>
           </div>
         </div>
         <div class="home-preview" aria-label="Inventory dashboard preview">
@@ -83,28 +92,49 @@ function canManage(business: ActiveBusiness): boolean {
   return ['owner', 'admin', 'manager'].includes(business.role);
 }
 
-function renderSetup(user: User): void {
-  setPage('Create a business', `
+function routeToBusiness(business: ActiveBusiness): boolean {
+  if (!business.slug) return false;
+  const target = new URL(getBusinessUrl(business.slug), window.location.href);
+  if (
+    target.origin === window.location.origin &&
+    target.pathname === window.location.pathname &&
+    target.search === window.location.search
+  ) {
+    return false;
+  }
+  if (target.origin === window.location.origin) {
+    window.history.replaceState(window.history.state, '', target.href);
+    return false;
+  }
+  window.location.assign(target.href);
+  return true;
+}
+
+function renderSetup(user: User, existingBusiness?: ActiveBusiness): void {
+  document.body.classList.add('business-setup');
+  const claimingAddress = Boolean(existingBusiness);
+  setPage(claimingAddress ? 'Choose a tenant address' : 'Create a business', `
     <section class="workspace-page">
       <header class="workspace-header"><a class="home-brand" href="${import.meta.env.BASE_URL}">Mandela Generals</a><span>Signed in as ${escapeHtml(displayName(user))}</span></header>
       <div class="workspace-card workspace-narrow">
-        <p class="home-eyebrow">Your first workspace</p>
-        <h1>Create your business</h1>
-        <p class="workspace-description">Your products and inventory will be private to your business and its authorized members.</p>
+        <p class="home-eyebrow">${claimingAddress ? 'Complete your tenant setup' : 'Your first workspace'}</p>
+        <h1>${claimingAddress ? 'Choose a tenant address' : 'Create your business'}</h1>
+        <p class="workspace-description">${claimingAddress
+          ? `Your existing business, ${escapeHtml(existingBusiness?.name ?? '')}, is ready. Choose an available tenant address to finish setup.`
+          : 'Your products and inventory will be private to your business and its authorized members.'}</p>
         <form id="business-form" class="workspace-form">
-          <label for="business-name">Business name</label>
-          <input id="business-name" name="name" maxlength="100" autocomplete="organization" required>
-          <label for="business-slug">Choose your business address</label>
+          ${claimingAddress ? '' : '<label for="business-name">Business name</label><input id="business-name" name="name" maxlength="100" autocomplete="organization" required>'}
+          <label for="business-slug">Choose your tenant address</label>
           <input id="business-slug" name="slug" maxlength="48" pattern="[a-z0-9]+(-[a-z0-9]+)*" autocapitalize="none" spellcheck="false" required>
           <p class="slug-status" id="slug-status" aria-live="polite">Use lowercase letters, numbers, and single hyphens.</p>
           <div class="slug-suggestions">
             <span>Local testing: <code id="local-slug-preview"></code></span>
             <span>GitHub Pages: <code id="github-slug-preview"></code></span>
-            <span>Local sign-in may need to be repeated on the business subdomain because browser sessions are separated by origin.</span>
+            <span>Local tenant links use a path on this host so your signed-in session remains active.</span>
             <span>GitHub Pages uses a path, not subdomains. A custom domain requires a domain and wildcard DNS you control.</span>
           </div>
           <p id="workspace-error" class="workspace-error" role="alert" hidden></p>
-          <button class="home-button" type="submit">Create business</button>
+          <button class="home-button" type="submit">${claimingAddress ? 'Claim tenant address' : 'Create business'}</button>
         </form>
         <button class="workspace-logout" type="button" data-logout>Log out</button>
       </div>
@@ -116,6 +146,7 @@ function renderSetup(user: User): void {
   const slugStatus = root?.querySelector<HTMLElement>('#slug-status');
   const localPreview = root?.querySelector<HTMLElement>('#local-slug-preview');
   const githubPreview = root?.querySelector<HTMLElement>('#github-slug-preview');
+  if (existingBusiness && slugInput) slugInput.value = suggestBusinessSlug(existingBusiness.name);
   let slugWasEdited = false;
   let checkVersion = 0;
   let availabilityTimer: number | undefined;
@@ -165,18 +196,21 @@ function renderSetup(user: User): void {
     scheduleAvailabilityCheck();
   });
   updatePreview();
+  if (existingBusiness) scheduleAvailabilityCheck();
 
   root?.querySelector<HTMLFormElement>('#business-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = event.currentTarget as HTMLFormElement;
     const button = form.querySelector<HTMLButtonElement>('button[type="submit"]');
     const error = root?.querySelector<HTMLElement>('#workspace-error');
-    const name = new FormData(form).get('name')?.toString() ?? '';
+    const name = existingBusiness?.name ?? new FormData(form).get('name')?.toString() ?? '';
     if (button) button.disabled = true;
     if (error) error.hidden = true;
     try {
       const slug = new FormData(form).get('slug')?.toString() ?? '';
-      const business = await createBusiness(name, slug);
+      const business = existingBusiness
+        ? { ...existingBusiness, slug: await claimBusinessSlug(user.uid, existingBusiness.id, slug) }
+        : await createBusiness(name, slug);
       setSelectedBusiness(user.uid, business.id);
       await renderAuthenticatedHome(user, business.slug);
     } catch (reason) {
@@ -215,7 +249,8 @@ function renderBusinessPicker(user: User, businesses: ActiveBusiness[]): void {
       const business = businesses.find((candidate) => candidate.id === businessId);
       if (!business) return;
       setSelectedBusiness(user.uid, business.id);
-      window.location.assign(business.slug ? getBusinessUrl(business.slug) : import.meta.env.BASE_URL);
+      if (routeToBusiness(business)) return;
+      void renderAuthenticatedHome(user, business.slug || undefined);
     });
   });
   bindLogout();
@@ -320,6 +355,7 @@ function bindLogout(): void {
 }
 
 function showBusinessTemplate(user: User, business: ActiveBusiness): void {
+  document.body.classList.remove('business-setup');
   const userName = appShell?.querySelector<HTMLElement>('#template-user-name');
   const userRole = appShell?.querySelector<HTMLElement>('#template-user-role');
   if (userName) userName.textContent = displayName(user);
@@ -338,6 +374,7 @@ function showBusinessTemplate(user: User, business: ActiveBusiness): void {
 }
 
 function showPlatformAdminTemplate(user: User): void {
+  document.body.classList.remove('business-setup');
   const userName = appShell?.querySelector<HTMLElement>('#template-user-name');
   const userRole = appShell?.querySelector<HTMLElement>('#template-user-role');
   const menu = appShell?.querySelector<HTMLElement>('#sidebar-menu');
@@ -356,7 +393,7 @@ function showPlatformAdminTemplate(user: User): void {
     menu.innerHTML = `<ul>
       <li class="sidebar-title">PLATFORM ADMIN</li>
       ${items.map(([view, label, icon]) => `
-        <li class="${new URLSearchParams(window.location.search).get('platform') === view ? 'active' : ''}">
+        <li class="${(new URLSearchParams(window.location.search).get('platform') || 'overview') === view ? 'active' : ''}">
           <a href="${basePath}?platform=${view}" data-platform-view="${view}">
             <img src="${basePath}assets/img/icons/${icon}" alt=""><span> ${label}</span>
           </a>
@@ -384,14 +421,32 @@ async function renderPlatformAdminPage(user: User): Promise<void> {
       const businesses = await getPlatformBusinesses();
       setPage(title, `
         <div class="content">
-          <div class="page-header"><div class="page-title"><h4>${title}</h4><h6>All business workspaces registered on the platform.</h6></div></div>
+          <div class="page-header">
+            <div class="page-title"><h4>${title}</h4><h6>All business workspaces registered on the platform.</h6></div>
+            <div class="page-btn"><span class="badge bg-primary">${businesses.length.toLocaleString()} total</span></div>
+          </div>
           <div class="card"><div class="card-body"><div class="table-responsive">
+            <div class="form-group"><label for="platform-business-search">Search businesses</label><input id="platform-business-search" class="form-control" type="search" placeholder="Search business, slug, owner, or ID"></div>
             <table class="table"><thead><tr><th>Business</th><th>Tenant slug</th><th>Owner UID</th><th>Business ID</th></tr></thead>
-            <tbody>${businesses.length ? businesses.map((business) => `<tr><td>${escapeHtml(business.name)}</td><td>${escapeHtml(business.slug || 'Not assigned')}</td><td>${escapeHtml(business.ownerId)}</td><td>${escapeHtml(business.id)}</td></tr>`).join('') : '<tr><td colspan="4">No businesses have been created.</td></tr>'}</tbody>
+            <tbody id="platform-business-rows">${businesses.length ? businesses.map((business) => `
+              <tr data-business-search="${escapeHtml(`${business.name} ${business.slug} ${business.ownerId} ${business.id}`.toLocaleLowerCase())}">
+                <td>${escapeHtml(business.name)}</td>
+                <td>${escapeHtml(business.slug || 'Not assigned')}</td>
+                <td>${escapeHtml(business.ownerId)}</td>
+                <td>${escapeHtml(business.id)}</td>
+              </tr>`).join('') : '<tr><td colspan="4">No businesses have been created.</td></tr>'}</tbody>
             </table>
           </div></div></div>
-          <p class="text-muted">Business editing, suspension, and deletion are not enabled from this view.</p>
+          ${businesses.length ? '<p class="text-muted">This list includes every document in the platform businesses collection. Business editing, suspension, and deletion are not enabled from this view.</p>' : ''}
         </div>`);
+      const search = root?.querySelector<HTMLInputElement>('#platform-business-search');
+      const rows = root?.querySelectorAll<HTMLTableRowElement>('#platform-business-rows tr[data-business-search]');
+      search?.addEventListener('input', () => {
+        const term = search.value.trim().toLocaleLowerCase();
+        rows?.forEach((row) => {
+          row.hidden = !(row.dataset.businessSearch ?? '').includes(term);
+        });
+      });
       return;
     }
 
@@ -433,7 +488,30 @@ async function renderPlatformAdminPage(user: User): Promise<void> {
           <h4 class="card-title">Platform controls</h4>
           <p>Use the platform menu to review businesses and accounts. Subscription plans, platform settings, and audit records are not configured yet.</p>
         </div></div>
+        <div class="card"><div class="card-body">
+          <h4 class="card-title">Legacy accounts without a tenant</h4>
+          <p>Create or use the shared <strong>Demo</strong> tenant (slug: demo) and add existing user profiles with no business memberships as staff. These users share the Demo tenant’s data.</p>
+          <p id="demo-tenant-status" role="status" aria-live="polite"></p>
+          <button id="initialize-demo-tenant" class="btn btn-primary" type="button">Initialize Demo tenant</button>
+        </div></div>
       </div>`);
+    const initializeDemoButton = root?.querySelector<HTMLButtonElement>('#initialize-demo-tenant');
+    const demoStatus = root?.querySelector<HTMLElement>('#demo-tenant-status');
+    initializeDemoButton?.addEventListener('click', async () => {
+      initializeDemoButton.disabled = true;
+      if (demoStatus) demoStatus.textContent = 'Initializing the shared Demo tenant…';
+      try {
+        const assignedCount = await assignExistingUsersToDemoTenant();
+        if (demoStatus) {
+          demoStatus.textContent = `Demo tenant is ready. ${assignedCount} user${assignedCount === 1 ? '' : 's'} without a business membership ${assignedCount === 1 ? 'was' : 'were'} added as staff.`;
+        }
+      } catch (error) {
+        if (demoStatus) {
+          demoStatus.textContent = error instanceof Error ? error.message : 'Could not initialize the Demo tenant.';
+        }
+        initializeDemoButton.disabled = false;
+      }
+    });
   } catch (error) {
     renderError(error instanceof Error ? error.message : 'Could not load platform administration.');
   }
@@ -451,12 +529,18 @@ async function renderAuthenticatedHome(user: User, preferredSlug?: string): Prom
       return;
     }
 
+    const requestedSlug = preferredSlug ?? getTenantSlugFromLocation();
     const businesses = await getUserBusinesses(user.uid);
     if (businesses.length === 0) {
+      if (requestedSlug) {
+        setPage('Business unavailable', `
+          <section class="workspace-page"><header class="workspace-header"><a class="home-brand" href="${import.meta.env.BASE_URL}">Mandela Generals</a></header>
+          <div class="workspace-card workspace-narrow"><h1>Business unavailable</h1><p class="workspace-description">This account does not have an active membership for this business. Ask the business owner to invite you, or return home to create a business.</p><a class="home-secondary-button" href="${import.meta.env.BASE_URL}">Return home</a></div></section>`);
+        return;
+      }
       renderSetup(user);
       return;
     }
-    const requestedSlug = preferredSlug ?? getTenantSlugFromLocation();
     const business = requestedSlug
       ? businesses.find((membership) => membership.slug === requestedSlug) ?? null
       : getSelectedBusiness(user.uid, businesses);
@@ -471,6 +555,18 @@ async function renderAuthenticatedHome(user: User, preferredSlug?: string): Prom
       return;
     }
     setSelectedBusiness(user.uid, business.id);
+    if (routeToBusiness(business)) return;
+    if (!business.slug) {
+      if (business.role === 'owner') {
+        renderSetup(user, business);
+      } else {
+        setPage('Tenant address needed', `
+          <section class="workspace-page"><header class="workspace-header"><a class="home-brand" href="${import.meta.env.BASE_URL}">Mandela Generals</a></header>
+          <div class="workspace-card workspace-narrow"><h1>Tenant address not set</h1><p class="workspace-description">The owner of ${escapeHtml(business.name)} needs to choose and claim its tenant address before members can open its tenant workspace.</p><button class="workspace-logout" type="button" data-logout>Log out</button></div></section>`);
+        bindLogout();
+      }
+      return;
+    }
     showBusinessTemplate(user, business);
     const products = await getProducts(business.id);
     renderDashboard(user, business, products, businesses.length > 1);
@@ -493,6 +589,7 @@ if (root) {
         void renderAuthenticatedHome(user);
       } else {
         document.body.classList.remove('authenticated');
+        document.body.classList.remove('business-setup');
         if (appShell) appShell.hidden = true;
         root = publicRoot;
         renderHome();

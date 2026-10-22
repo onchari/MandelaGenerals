@@ -51,8 +51,8 @@ export async function getUserBusinesses(userId: string): Promise<ActiveBusiness[
     throw new Error('Firebase is not configured.');
   }
 
-  const memberships = await getDocs(collection(dbInstance, 'users', userId, 'businessMemberships'));
-  const businesses = memberships.docs.flatMap((membership) => {
+  const membershipSnapshots = await getDocs(collection(dbInstance, 'users', userId, 'businessMemberships'));
+  const memberships = membershipSnapshots.docs.flatMap((membership) => {
     const data = membership.data();
     if (data.active !== true) return [];
     if (
@@ -69,6 +69,16 @@ export async function getUserBusinesses(userId: string): Promise<ActiveBusiness[
       role: data.role,
     }];
   });
+  const businesses = await Promise.all(memberships.map(async (membership) => {
+    if (membership.slug) return membership;
+    const businessSnapshot = await getDoc(doc(dbInstance, 'businesses', membership.id));
+    if (!businessSnapshot.exists()) return membership;
+    const slug = businessSnapshot.data().slug;
+    return {
+      ...membership,
+      slug: typeof slug === 'string' ? slug : '',
+    };
+  }));
   if (businesses.length > 0) return businesses;
 
   const userSnapshot = await getDoc(doc(dbInstance, 'users', userId));
@@ -137,6 +147,114 @@ export async function getPlatformUsers(): Promise<PlatformUser[]> {
   });
 }
 
+export async function assignExistingUsersToDemoTenant(): Promise<number> {
+  assertFirebaseReady();
+
+  const authInstance = auth;
+  const dbInstance = db;
+  if (!authInstance?.currentUser || !dbInstance) {
+    throw new Error('Sign in as a platform admin before initializing the Demo tenant.');
+  }
+  const userId = authInstance.currentUser.uid;
+  if (!(await isPlatformAdmin(userId))) {
+    throw new Error('Only a platform admin can initialize the Demo tenant.');
+  }
+
+  const slug = 'demo';
+  const slugSnapshot = await getDoc(doc(dbInstance, 'businessSlugs', slug));
+  let businessId: string;
+  if (slugSnapshot.exists()) {
+    businessId = slugSnapshot.data().businessId;
+    const businessSnapshot = await getDoc(doc(dbInstance, 'businesses', businessId));
+    const business = businessSnapshot.data();
+    if (
+      !businessSnapshot.exists() ||
+      business?.slug !== slug ||
+      business?.name !== 'Demo' ||
+      business?.ownerId !== userId
+    ) {
+      throw new Error('The slug "demo" is already assigned to another business.');
+    }
+  } else {
+    const businessRef = doc(collection(dbInstance, 'businesses'));
+    businessId = businessRef.id;
+    const timestamp = serverTimestamp();
+    const batch = writeBatch(dbInstance);
+    batch.set(businessRef, {
+      name: 'Demo',
+      slug,
+      ownerId: userId,
+      createdAt: timestamp,
+    });
+    batch.set(doc(dbInstance, 'businessSlugs', slug), {
+      businessId,
+      createdAt: timestamp,
+    });
+    batch.set(doc(dbInstance, 'businesses', businessId, 'members', userId), {
+      role: 'owner',
+      active: true,
+      joinedAt: timestamp,
+    });
+    batch.set(doc(dbInstance, 'users', userId, 'businessMemberships', businessId), {
+      businessName: 'Demo',
+      slug,
+      role: 'owner',
+      active: true,
+      joinedAt: timestamp,
+    });
+    await batch.commit();
+  }
+
+  const ownerMembership = await getDoc(
+    doc(dbInstance, 'users', userId, 'businessMemberships', businessId),
+  );
+  if (
+    !ownerMembership.exists() ||
+    ownerMembership.data().role !== 'owner' ||
+    ownerMembership.data().active !== true
+  ) {
+    throw new Error('The platform admin must have an active owner membership in the Demo tenant.');
+  }
+
+  const userSnapshots = await getDocs(collection(dbInstance, 'users'));
+  const usersWithoutMembership: string[] = [];
+  const users = userSnapshots.docs;
+  for (let offset = 0; offset < users.length; offset += 20) {
+    const group = users.slice(offset, offset + 20);
+    const memberships = await Promise.all(group.map((user) =>
+      getDocs(collection(dbInstance, 'users', user.id, 'businessMemberships')),
+    ));
+    memberships.forEach((membership, index) => {
+      if (membership.empty) usersWithoutMembership.push(group[index].id);
+    });
+  }
+
+  let assignedCount = 0;
+  for (let offset = 0; offset < usersWithoutMembership.length; offset += 200) {
+    const group = usersWithoutMembership.slice(offset, offset + 200);
+    const batch = writeBatch(dbInstance);
+    const timestamp = serverTimestamp();
+    for (const memberId of group) {
+      batch.set(doc(dbInstance, 'businesses', businessId, 'members', memberId), {
+        role: 'staff',
+        active: true,
+        joinedAt: timestamp,
+      });
+      batch.set(doc(dbInstance, 'users', memberId, 'businessMemberships', businessId), {
+        businessName: 'Demo',
+        slug,
+        role: 'staff',
+        active: true,
+        joinedAt: timestamp,
+      });
+    }
+    await batch.commit();
+    assignedCount += group.length;
+  }
+
+  return assignedCount;
+}
+
 export function getSelectedBusiness(
   userId: string,
   businesses: ActiveBusiness[],
@@ -179,12 +297,63 @@ export async function isBusinessSlugAvailable(slug: string): Promise<boolean> {
   return !snapshot.exists();
 }
 
+export async function claimBusinessSlug(
+  userId: string,
+  businessId: string,
+  requestedSlug: string,
+): Promise<string> {
+  assertFirebaseReady();
+
+  const authInstance = auth;
+  const dbInstance = db;
+  if (!authInstance?.currentUser || authInstance.currentUser.uid !== userId || !dbInstance) {
+    throw new Error('Sign in as the business owner to claim a tenant address.');
+  }
+  const slug = requestedSlug.trim().toLowerCase();
+  if (!slugPattern.test(slug) || slug.length > 48) {
+    throw new Error('Use 1–48 lowercase letters, numbers, and single hyphens for the business address.');
+  }
+  const [businessSnapshot, memberSnapshot, membershipSnapshot] = await Promise.all([
+    getDoc(doc(dbInstance, 'businesses', businessId)),
+    getDoc(doc(dbInstance, 'businesses', businessId, 'members', userId)),
+    getDoc(doc(dbInstance, 'users', userId, 'businessMemberships', businessId)),
+  ]);
+  if (
+    !businessSnapshot.exists() ||
+    businessSnapshot.data().ownerId !== userId ||
+    memberSnapshot.data()?.active !== true ||
+    memberSnapshot.data()?.role !== 'owner' ||
+    membershipSnapshot.data()?.active !== true ||
+    membershipSnapshot.data()?.role !== 'owner'
+  ) {
+    throw new Error('Only the active business owner can claim its tenant address.');
+  }
+  const currentSlug = businessSnapshot.data().slug;
+  if (typeof currentSlug === 'string' && currentSlug.length > 0) {
+    throw new Error('This business already has a tenant address.');
+  }
+  if (!(await isBusinessSlugAvailable(slug))) {
+    throw new Error('That business address is already taken. Choose another.');
+  }
+
+  const timestamp = serverTimestamp();
+  const batch = writeBatch(dbInstance);
+  batch.update(doc(dbInstance, 'businesses', businessId), { slug });
+  batch.set(doc(dbInstance, 'businessSlugs', slug), {
+    businessId,
+    createdAt: timestamp,
+  });
+  batch.update(doc(dbInstance, 'users', userId, 'businessMemberships', businessId), { slug });
+  await batch.commit();
+  return slug;
+}
+
 export function getBusinessUrl(slug: string): string {
   const basePath = import.meta.env.BASE_URL;
   const hostname = window.location.hostname.toLowerCase();
 
   if (isLocalHost(hostname)) {
-    return `${window.location.protocol}//${slug}.localhost${window.location.port ? `:${window.location.port}` : ''}${basePath}`;
+    return `${window.location.origin}${basePath}b/${encodeURIComponent(slug)}/`;
   }
 
   if (hostname.endsWith('.github.io')) {
@@ -197,20 +366,18 @@ export function getBusinessUrl(slug: string): string {
 export function getBusinessPageUrl(slug: string, pageName: string): string {
   const basePath = import.meta.env.BASE_URL;
   const hostname = window.location.hostname.toLowerCase();
-  if (slug && isLocalHost(hostname)) {
-    return `${getBusinessUrl(slug)}${pageName}`;
-  }
-
   const url = new URL(pageName, window.location.origin + basePath);
   if (slug) url.searchParams.set('tenant', slug);
+  if (!isLocalHost(hostname) && !hostname.endsWith('.github.io') && slug) {
+    return `${window.location.protocol}//${slug}.${hostname}${basePath}${pageName}`;
+  }
   return `${url.pathname}${url.search}`;
 }
 
 export function getBusinessUrlSuggestions(slug: string): { local: string; githubPages: string } {
   const basePath = import.meta.env.BASE_URL;
-  const port = window.location.port || '5173';
   return {
-    local: `http://${slug}.localhost:${port}${basePath}`,
+    local: `${window.location.origin}${basePath}b/${encodeURIComponent(slug)}/`,
     githubPages: `https://onchari.github.io${basePath}b/${encodeURIComponent(slug)}/`,
   };
 }

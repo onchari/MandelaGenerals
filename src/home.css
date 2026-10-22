@@ -11,6 +11,8 @@ body { margin: 0; min-width: 320px; }
 body.authenticated #app-root, #app-shell[hidden] { display: none !important; }
 body.authenticated .page-wrapper .content > :not(#dashboard-root) { display: none !important; }
 body:not(.authenticated) #app-shell { display: none !important; }
+body.business-setup .sidebar { display: none !important; }
+body.business-setup .page-wrapper { margin-left: 0 !important; }
 #dashboard-root { min-height: 240px; }
 a { color: inherit; text-decoration: none; }
 button, input { font: inherit; }

@@ -18,8 +18,17 @@ function getInputValue(selector: string, trim = true): string {
   if (!element) {
     return '';
   }
-
   return trim ? element.value.trim() : element.value;
+}
+
+function getPostAuthUrl(): string {
+  const basePath = import.meta.env.BASE_URL;
+  const url = new URL(basePath, window.location.origin);
+  const tenant = new URLSearchParams(window.location.search).get('tenant');
+  if (tenant) {
+    return `${basePath}b/${encodeURIComponent(tenant)}/`;
+  }
+  return `${url.pathname}${url.search}`;
 }
 
 function handlePasswordToggle(): void {
@@ -64,7 +73,7 @@ function bindSignIn(): void {
 
     try {
       await login(email, password);
-      window.location.href = 'index.html';
+      window.location.href = getPostAuthUrl();
     } catch (error) {
       const messageText = error instanceof Error ? error.message : 'Unable to sign in.';
       showMessage(message, messageText, true);
@@ -98,7 +107,7 @@ function bindSignUp(): void {
 
     try {
       await register(fullName, email, password);
-      window.location.href = 'index.html';
+      window.location.href = getPostAuthUrl();
     } catch (error) {
       const messageText = error instanceof Error ? error.message : 'Unable to create the account.';
       showMessage(message, messageText, true);

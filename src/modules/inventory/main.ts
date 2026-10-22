@@ -114,7 +114,7 @@ function renderBusinessSetup(user: User): void {
           <small class="inventory-muted" id="slug-status" aria-live="polite">Use lowercase letters, numbers, and single hyphens.</small>
           <small class="inventory-muted">Local testing: <code id="local-slug-preview"></code></small>
           <small class="inventory-muted">GitHub Pages: <code id="github-slug-preview"></code></small>
-          <small class="inventory-muted">Local sign-in may need to be repeated on the business subdomain because browser sessions are separated by origin.</small>
+          <small class="inventory-muted">Local tenant links use a path on this host so your signed-in session remains active.</small>
           <small class="inventory-muted">GitHub Pages uses a path, not subdomains. A custom domain requires a domain and wildcard DNS you control.</small>
         </div>
         <div class="inventory-form-actions">
