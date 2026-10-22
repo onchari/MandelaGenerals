@@ -1,0 +1,104 @@
+.inventory-module {
+  --inventory-border: #e8ebf0;
+  --inventory-muted: #667085;
+  color: #1d2939;
+}
+
+.inventory-module .inventory-heading,
+.inventory-module .inventory-toolbar,
+.inventory-module .inventory-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inventory-module .inventory-heading {
+  margin-bottom: 22px;
+}
+
+.inventory-module .inventory-heading h2,
+.inventory-module .inventory-card h3 {
+  margin: 0;
+}
+
+.inventory-module .inventory-heading p,
+.inventory-module .inventory-muted {
+  color: var(--inventory-muted);
+  margin: 5px 0 0;
+}
+
+.inventory-module .inventory-card {
+  background: #fff;
+  border: 1px solid var(--inventory-border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 18px;
+}
+
+.inventory-module .inventory-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.inventory-module .inventory-stat strong {
+  display: block;
+  font-size: 24px;
+  margin-top: 8px;
+}
+
+.inventory-module .inventory-toolbar {
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.inventory-module .inventory-search {
+  min-width: min(100%, 280px);
+}
+
+.inventory-module .inventory-table-wrap {
+  overflow-x: auto;
+}
+
+.inventory-module .inventory-table {
+  min-width: 760px;
+  width: 100%;
+}
+
+.inventory-module .inventory-table td,
+.inventory-module .inventory-table th {
+  vertical-align: middle;
+}
+
+.inventory-module .inventory-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.inventory-module .inventory-form .inventory-field-full,
+.inventory-module .inventory-form .inventory-form-actions {
+  grid-column: 1 / -1;
+}
+
+.inventory-module .inventory-form label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.inventory-module .inventory-error {
+  color: #b42318;
+}
+
+.inventory-module .inventory-success {
+  color: #067647;
+}
+
+@media (max-width: 640px) {
+  .inventory-module .inventory-form {
+    grid-template-columns: 1fr;
+  }
+}
