@@ -18,7 +18,10 @@ import { getProducts } from './modules/inventory/service';
 import type { Product } from './modules/inventory/types';
 import './home.css';
 
-const root = document.querySelector<HTMLElement>('#app-root');
+const publicRoot = document.querySelector<HTMLElement>('#app-root');
+const dashboardRoot = document.querySelector<HTMLElement>('#dashboard-root');
+const appShell = document.querySelector<HTMLElement>('#app-shell');
+let root: HTMLElement | null = publicRoot;
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({
@@ -32,6 +35,7 @@ function escapeHtml(value: string): string {
 
 function setPage(title: string, html: string): void {
   document.title = `${title} | Mandela Generals`;
+  root = document.body.classList.contains('authenticated') ? dashboardRoot : publicRoot;
   if (root) root.innerHTML = html;
 }
 
@@ -284,6 +288,8 @@ function renderError(message: string): void {
 
 function bindLogout(): void {
   root?.querySelectorAll<HTMLButtonElement>('[data-logout]').forEach((button) => {
+    if (button.dataset.logoutBound === 'true') return;
+    button.dataset.logoutBound = 'true';
     button.addEventListener('click', async () => {
       button.disabled = true;
       try {
@@ -294,10 +300,45 @@ function bindLogout(): void {
       }
     });
   });
+  appShell?.querySelectorAll<HTMLAnchorElement>('[data-logout]').forEach((link) => {
+    if (link.dataset.logoutBound === 'true') return;
+    link.dataset.logoutBound = 'true';
+    link.addEventListener('click', async (event) => {
+      event.preventDefault();
+      link.classList.add('disabled');
+      try {
+        await logout();
+      } catch (error) {
+        link.classList.remove('disabled');
+        renderError(error instanceof Error ? error.message : 'Could not log out.');
+      }
+    });
+  });
+}
+
+function showBusinessTemplate(user: User, business: ActiveBusiness): void {
+  const userName = appShell?.querySelector<HTMLElement>('#template-user-name');
+  const userRole = appShell?.querySelector<HTMLElement>('#template-user-role');
+  if (userName) userName.textContent = displayName(user);
+  if (userRole) userRole.textContent = business.role;
+
+  appShell?.querySelectorAll<HTMLAnchorElement>('#sidebar-menu a[href], .header a[href]').forEach((link) => {
+    const href = link.getAttribute('href');
+    if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
+    const url = new URL(href, window.location.href);
+    if (url.origin !== window.location.origin) return;
+    const pageName = url.pathname.split('/').pop();
+    if (!pageName?.endsWith('.html')) return;
+    link.href = getBusinessPageUrl(business.slug, pageName);
+  });
+  bindLogout();
 }
 
 async function renderAuthenticatedHome(user: User, preferredSlug?: string): Promise<void> {
   setPage('Loading workspace', '<section class="workspace-page"><div class="home-loading">Loading your business workspace…</div></section>');
+  const userName = appShell?.querySelector<HTMLElement>('#template-user-name');
+  if (userName) userName.textContent = displayName(user);
+  bindLogout();
   try {
     const businesses = await getUserBusinesses(user.uid);
     if (businesses.length === 0) {
@@ -319,6 +360,7 @@ async function renderAuthenticatedHome(user: User, preferredSlug?: string): Prom
       return;
     }
     setSelectedBusiness(user.uid, business.id);
+    showBusinessTemplate(user, business);
     const products = await getProducts(business.id);
     renderDashboard(user, business, products, businesses.length > 1);
   } catch (error) {
@@ -328,11 +370,22 @@ async function renderAuthenticatedHome(user: User, preferredSlug?: string): Prom
 
 if (root) {
   if (!isFirebaseConfigured || !auth) {
+    document.body.classList.remove('authenticated');
+    if (appShell) appShell.hidden = true;
     renderHome();
   } else {
     onAuthStateChanged(auth, (user) => {
-      if (user) void renderAuthenticatedHome(user);
-      else renderHome();
+      if (user) {
+        document.body.classList.add('authenticated');
+        if (appShell) appShell.hidden = false;
+        root = dashboardRoot;
+        void renderAuthenticatedHome(user);
+      } else {
+        document.body.classList.remove('authenticated');
+        if (appShell) appShell.hidden = true;
+        root = publicRoot;
+        renderHome();
+      }
     }, (error) => renderError(error.message));
   }
 }

@@ -35,9 +35,10 @@ Covered functionality:
 - Business-role checks in the inventory UI and Firestore rules
 
 ### App entry and business dashboard
-- Replaced the app root with a public home page offering sign-up and log-in.
-- After authentication, the root now shows business setup, a selector for multiple memberships, or a dashboard for the selected business.
+- The public app root offers sign-up and log-in; after authentication, `index.html` shows the shared admin-template shell with its sidebar menus and business dashboard.
+- After authentication, the index content area shows business setup, a selector for multiple memberships, or the selected business dashboard.
 - The business dashboard shows product count, total stock, low-stock count, inventory cost value, recent products, and role-appropriate inventory links.
+- The active account name and role appear in the template user menu; template logout links use Firebase sign-out.
 - Added the required auth and inventory HTML entries to the Vite build.
 
 ### Business-selected tenant addresses
