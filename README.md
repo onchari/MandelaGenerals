@@ -161,6 +161,8 @@ the app; neither deployment copies Firestore data or deploys Firestore rules.
 Users can create accounts and businesses in either environment. Dev and
 Production accounts, businesses, and data remain separate because each app
 connects to its own Firebase project.
+Production tenant links use a `?tenant=` query on GitHub Pages so refreshing
+the page returns to the app instead of a static-hosting 404.
 
 The Git branch does not select the Firebase project. `npm run dev` always
 starts Vite in development mode and uses `.env.development`, so you can test

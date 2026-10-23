@@ -116,7 +116,7 @@ function renderBusinessSetup(user: User): void {
           <small class="inventory-muted">Local testing: <code id="local-slug-preview"></code></small>
           <small class="inventory-muted">GitHub Pages: <code id="github-slug-preview"></code></small>
           <small class="inventory-muted">Local tenant links use a path on this host so your signed-in session remains active.</small>
-          <small class="inventory-muted">GitHub Pages uses a path, not subdomains. A custom domain requires a domain and wildcard DNS you control.</small>
+          <small class="inventory-muted">GitHub Pages tenant links use a query parameter so refreshing works. A custom domain requires a domain and wildcard DNS you control.</small>
         </div>
         <div class="inventory-form-actions">
           <button class="btn btn-primary" type="submit">Create business</button>
