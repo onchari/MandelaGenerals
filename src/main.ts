@@ -21,7 +21,7 @@ import {
 import { logout } from './services/auth.service';
 import { getProducts } from './modules/inventory/service';
 import type { Product } from './modules/inventory/types';
-import './environment-switcher';
+import './environment-indicator';
 import './home.css';
 
 const publicRoot = document.querySelector<HTMLElement>('#app-root');
@@ -536,6 +536,7 @@ async function renderAuthenticatedHome(user: User, preferredSlug?: string): Prom
   const userName = appShell?.querySelector<HTMLElement>('#template-user-name');
   if (userName) userName.textContent = displayName(user);
   bindLogout();
+  let loadingStep = 'checking account access';
   try {
     if (await isPlatformAdmin(user.uid)) {
       showPlatformAdminTemplate(user);
@@ -544,6 +545,7 @@ async function renderAuthenticatedHome(user: User, preferredSlug?: string): Prom
     }
 
     const requestedSlug = preferredSlug ?? getTenantSlugFromLocation();
+    loadingStep = 'loading your business memberships';
     const businesses = await getUserBusinesses(user.uid);
     if (businesses.length === 0) {
       if (requestedSlug) {
@@ -582,10 +584,12 @@ async function renderAuthenticatedHome(user: User, preferredSlug?: string): Prom
       return;
     }
     showBusinessTemplate(user, business);
+    loadingStep = 'loading business inventory';
     const products = await getProducts(business.id);
     renderDashboard(user, business, products, businesses.length > 1);
   } catch (error) {
-    renderError(error instanceof Error ? error.message : 'An unexpected error occurred.');
+    const message = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    renderError(`While ${loadingStep}: ${message}`);
   }
 }
 

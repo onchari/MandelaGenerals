@@ -127,41 +127,36 @@ https://onchari.github.io/MandelaGenerals/
 
 ### Development and production environments
 
-The app uses separate Firebase projects:
+The app uses two Firebase projects and separate URLs. Development is hosted by
+Firebase Hosting for `mandelagenerals-dev` at
+`https://mandelagenerals-dev.web.app`. Production is hosted on GitHub Pages at
+`https://onchari.github.io/MandelaGenerals/` and connects only to
+`mandelageneralshop`. There is no in-app environment switch; use the Dev URL
+for testing and the production URL for live data.
 
-- Development: `mandelagenerals-dev` (local Vite app and Firebase Hosting)
-- Production: `mandelageneralshop` (GitHub Pages deployment)
-
-Create `.env.development` from `.env.development.example` and `.env.production`
-from `.env.production.example`. Add the matching Firebase web app configuration
-to each file. These files are ignored by Git. Development mode refuses to
-initialize Firebase if it is configured with the production project.
+Create `.env.development` from `.env.development.example` and put the Dev
+Firebase web app configuration there. For local production builds, create
+`.env.production` from `.env.production.example` and put the Production config
+there. These files are ignored by Git. The build checks that its Firebase
+project ID matches the selected Vite mode.
 
 ```bash
-npm run dev          # Development app; uses .env.development
-npm run build:dev    # Build with development Firebase configuration
-npm run deploy:dev   # Deploy to the development Firebase project
+npm run dev          # Local development app; uses .env.development
+npm run build:dev    # Build the Dev app
+npm run deploy:dev   # Deploy only the Dev app to Firebase Hosting
 npm run build        # Production build for GitHub Pages
 ```
 
-Firebase CLI defaults to the development project. Production deploys through
-GitHub Actions and uses the `mandelageneralshop` repository variables
-(`VITE_FIREBASE_*`). To enable the GitHub Pages environment switch, also add
-the development web-app settings as repository variables named
-`VITE_FIREBASE_DEV_API_KEY`, `VITE_FIREBASE_DEV_AUTH_DOMAIN`,
-`VITE_FIREBASE_DEV_PROJECT_ID`, `VITE_FIREBASE_DEV_STORAGE_BUCKET`,
-`VITE_FIREBASE_DEV_MESSAGING_SENDER_ID`, and `VITE_FIREBASE_DEV_APP_ID`.
-The switch signs out of the current Firebase project before reloading into the
-other one; each project has separate accounts and data. The switch is visible
-to site visitors, but Dev data access is restricted by Firestore rules to
-approved tester accounts. Dev accounts must be created by a project
-administrator; self-sign-up is disabled in the Dev app.
+The Dev deployment uses the `development` Firebase CLI alias and deploys
+Hosting only; it does not update Firestore rules. Production deploys to GitHub
+Pages through GitHub Actions using the `mandelageneralshop` repository
+variables (`VITE_FIREBASE_*`). Dev accounts are separate and restricted by
+Firestore rules to approved testers; self-sign-up is disabled in Dev.
 
-Before deploying the updated Firestore rules, create
-`environmentConfig/access` in both projects. Set `requireTesterApproval` to
-`true` in Dev and `false` in Production. In Dev, create
-`devTesters/{userId}` for each approved Firebase Authentication user with
-`enabled: true`. The rules require these configuration documents and the
+Create `environmentConfig/access` in both projects. Set
+`requireTesterApproval` to `true` in Dev and `false` in Production. In Dev,
+create `devTesters/{userId}` for each approved Firebase Authentication user
+with `enabled: true`. The rules require these configuration documents and the
 allowlisted Dev tester documents, and deny client writes to them. Deploy the
 same rules to both projects; the database structure and rules stay the same,
 while the configuration and business data differ.

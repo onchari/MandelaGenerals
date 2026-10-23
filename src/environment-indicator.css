@@ -1,0 +1,32 @@
+.environment-indicator {
+  position: fixed;
+  z-index: 1100;
+  right: 16px;
+  bottom: 12px;
+  padding: 8px 10px;
+  border: 1px solid #d0d5dd;
+  border-radius: 9px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(16, 24, 40, .12);
+  color: #344054;
+  font: 600 12px/1.2 Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.environment-indicator-development {
+  border-color: #f79009;
+  color: #93370d;
+}
+
+.environment-indicator-production {
+  border-color: #12b76a;
+  color: #027a48;
+}
+
+@media (max-width: 560px) {
+  .environment-indicator {
+    right: 8px;
+    bottom: 8px;
+    padding: 6px;
+    font-size: 11px;
+  }
+}

@@ -1,6 +1,6 @@
 import { login, register, sendPasswordReset } from './services/auth.service';
 import { firebaseEnvironment, firebaseEnvironmentError, isFirebaseConfigured } from './config/firebase';
-import './environment-switcher';
+import './environment-indicator';
 
 function showMessage(element: HTMLElement | null, message: string, isError = true): void {
   if (!element) {
