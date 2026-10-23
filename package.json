@@ -4,9 +4,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "dev": "vite --mode development",
+    "build": "tsc --noEmit && vite build --mode production",
+    "build:dev": "tsc --noEmit && vite build --mode development",
+    "preview": "vite preview --mode production",
+    "preview:dev": "vite preview --mode development",
+    "deploy:dev": "npm run build:dev && firebase deploy --project development"
   },
   "dependencies": {
     "firebase": "^9.14.0"

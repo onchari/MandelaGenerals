@@ -1,8 +1,25 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function environmentAccessPath() {
+      return /databases/$(database)/documents/environmentConfig/access;
+    }
+
+    function devTesterPath(uid) {
+      return /databases/$(database)/documents/devTesters/$(uid);
+    }
+
     function signedIn() {
-      return request.auth != null;
+      return request.auth != null
+        && exists(environmentAccessPath())
+        && (
+          get(environmentAccessPath()).data.requireTesterApproval == false
+          || (
+            get(environmentAccessPath()).data.requireTesterApproval == true
+            && exists(devTesterPath(request.auth.uid))
+            && get(devTesterPath(request.auth.uid)).data.enabled == true
+          )
+        );
     }
 
     function platformAdminPath(uid) {
@@ -200,6 +217,15 @@ service cloud.firestore {
 
     match /platformAdmins/{uid} {
       allow get: if signedIn() && request.auth.uid == uid;
+      allow list, create, update, delete: if false;
+    }
+
+    match /environmentConfig/{configId} {
+      allow read, write: if false;
+    }
+
+    match /devTesters/{uid} {
+      allow get: if request.auth != null && request.auth.uid == uid;
       allow list, create, update, delete: if false;
     }
 

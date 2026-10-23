@@ -5,6 +5,14 @@ This document records what has already been implemented in the current app and w
 
 ## What has been done
 
+### Development and production environments
+- Added Firebase CLI aliases: `development` maps to `mandelagenerals-dev` and is the safe default; `production` maps to `mandelageneralshop`.
+- Created the Dev Firebase project and registered its web app. Its SDK config is in ignored local `.env.development`; only the placeholder template is tracked.
+- Added `.env.development.example` and `.env.production.example`, with mode-specific project IDs and base paths.
+- `npm run dev` / `npm run build:dev` select Dev; `npm run build` selects Production. Development mode refuses to connect to `mandelageneralshop`.
+- Updated GitHub Pages production workflow validation to require the confirmed production project ID and auth domain.
+- Dev Firestore region `europe-west6` is approved to match Production. Database creation was attempted but the project’s Cloud Firestore API is disabled; enable it in Google Cloud Console, then create the default Standard database, deploy the reviewed rules, and enable Email/Password Authentication in Dev.
+
 ### Authentication and user setup
 The auth logic is implemented in [src/services/auth.service.ts](src/services/auth.service.ts).
 

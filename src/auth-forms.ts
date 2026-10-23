@@ -1,5 +1,6 @@
 import { login, register, sendPasswordReset } from './services/auth.service';
-import { isFirebaseConfigured } from './config/firebase';
+import { firebaseEnvironment, firebaseEnvironmentError, isFirebaseConfigured } from './config/firebase';
+import './environment-switcher';
 
 function showMessage(element: HTMLElement | null, message: string, isError = true): void {
   if (!element) {
@@ -67,7 +68,11 @@ function bindSignIn(): void {
     }
 
     if (!isFirebaseConfigured) {
-      showMessage(message, 'Firebase is not configured yet. Add your VITE_FIREBASE_* values to .env.local.', true);
+      showMessage(
+        message,
+        firebaseEnvironmentError || 'Firebase is not configured yet. Add the VITE_FIREBASE_* values for this environment.',
+        true,
+      );
       return;
     }
 
@@ -88,6 +93,18 @@ function bindSignUp(): void {
   }
 
   const message = document.querySelector('#signup-message') as HTMLElement | null;
+  if (firebaseEnvironment === 'development') {
+    form.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button').forEach((field) => {
+      field.disabled = true;
+    });
+    showMessage(
+      message,
+      'Development accounts are issued by the project administrator. Use an approved tester account.',
+      true,
+    );
+    return;
+  }
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
 
@@ -101,7 +118,11 @@ function bindSignUp(): void {
     }
 
     if (!isFirebaseConfigured) {
-      showMessage(message, 'Firebase is not configured yet. Add your VITE_FIREBASE_* values to .env.local.', true);
+      showMessage(
+        message,
+        firebaseEnvironmentError || 'Firebase is not configured yet. Add the VITE_FIREBASE_* values for this environment.',
+        true,
+      );
       return;
     }
 

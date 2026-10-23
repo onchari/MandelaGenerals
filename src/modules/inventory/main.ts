@@ -15,6 +15,7 @@ import {
 } from '../../services/business.service';
 import { addProduct, deleteProduct, getProduct, getProducts, updateProduct } from './service';
 import type { InventoryPage, Product, ProductInput } from './types';
+import '../../environment-switcher';
 import './inventory.css';
 
 const content = document.querySelector<HTMLElement>('.page-wrapper .content');

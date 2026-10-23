@@ -6,5 +6,7 @@ functions/lib
 .env.local
 .env.*
 !.env.example
+!.env.development.example
+!.env.production.example
 
 .DS_Store

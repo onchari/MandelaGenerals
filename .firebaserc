@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "default": "mandelagenerals-dev",
+    "development": "mandelagenerals-dev",
+    "production": "mandelageneralshop"
+  }
+}

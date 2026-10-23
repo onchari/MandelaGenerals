@@ -21,6 +21,7 @@ import {
 import { logout } from './services/auth.service';
 import { getProducts } from './modules/inventory/service';
 import type { Product } from './modules/inventory/types';
+import './environment-switcher';
 import './home.css';
 
 const publicRoot = document.querySelector<HTMLElement>('#app-root');
@@ -399,6 +400,19 @@ function showPlatformAdminTemplate(user: User): void {
           </a>
         </li>`).join('')}
     </ul>`;
+    menu.querySelectorAll<HTMLAnchorElement>('[data-platform-view]').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        const view = link.dataset.platformView;
+        if (!view) return;
+        const url = new URL(import.meta.env.BASE_URL, window.location.origin);
+        url.searchParams.set('platform', view);
+        window.history.pushState({}, '', url);
+        menu.querySelectorAll('li').forEach((item) => item.classList.remove('active'));
+        link.closest('li')?.classList.add('active');
+        void renderPlatformAdminPage(user);
+      });
+    });
   }
   bindLogout();
 }

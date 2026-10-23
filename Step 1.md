@@ -39,9 +39,19 @@
 - [ ] Deploy the reviewed Firestore rules to `mandelageneralshop`, then verify business creation and inventory using a clearly named demo business/product.
 - [ ] Publish the site and verify `/MandelaGenerals/b/{slug}/` on GitHub Pages.
 
+### Development and production environments
+
+- Development uses the separate Firebase project `mandelagenerals-dev`; production uses `mandelageneralshop`.
+- The Dev Firebase project and web app have been created. Its SDK configuration is stored locally in ignored `.env.development`; `.env.development.example` is the shareable template.
+- Create `.env.production` from `.env.production.example` for local production builds. Do not commit actual environment files.
+- `npm run dev` and `npm run build:dev` use development mode; `npm run build` is the production GitHub Pages build. Development mode blocks Firebase initialization if configured with the production project ID.
+- The Firebase CLI defaults to the development project. Use `npm run deploy:dev` only after development Firestore and Authentication are initialized.
+- Production GitHub Actions variables must use the `mandelageneralshop` Firebase web-app configuration. The production workflow rejects a different project ID or auth domain.
+- Dev Firestore region is approved as `europe-west6`, matching Production. Database creation was blocked because the Cloud Firestore API is not enabled on the new project. Enable that API, create the default Standard database in `europe-west6`, deploy the reviewed rules, and enable Email/Password authentication in Dev.
+
 ### Tenant addresses
 
-- Local development uses a same-origin path: `http://localhost:{port}/MandelaGenerals/b/{slug}/`. This keeps Firebase Auth persistence during tenant routing.
+- The Vite development app and Dev Firebase Hosting use root paths, such as `http://localhost:{port}/b/{slug}/`; this keeps Firebase Auth persistence during tenant routing.
 - GitHub Pages uses `https://onchari.github.io/MandelaGenerals/b/{slug}/`; GitHub Pages does not provide wildcard subdomains for this project site. The built `404.html` loads the app at that path.
 - A custom `{slug}.your-domain` address is not claimed to be available. It requires a domain the owner controls, wildcard DNS, and hosting configured for tenant routing.
 - The slug claim reserves a name in this Firebase project, not a domain name. An availability check is advisory; the atomic create-only claim is authoritative.
