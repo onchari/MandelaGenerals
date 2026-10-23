@@ -142,14 +142,20 @@ service cloud.firestore {
       allow read: if (signedIn() && request.auth.uid == uid) || isPlatformAdmin();
       allow create: if signedIn()
         && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['displayName', 'email', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['displayName', 'email', 'createdAt', 'phoneNumber'])
         && request.resource.data.keys().hasAll(['displayName', 'email', 'createdAt'])
         && request.resource.data.displayName is string
-        && request.resource.data.email is string;
+        && request.resource.data.email is string
+        && (!('phoneNumber' in request.resource.data)
+          || (request.resource.data.phoneNumber is string
+            && request.resource.data.phoneNumber.size() <= 32));
       allow update: if signedIn()
         && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName'])
-        && request.resource.data.displayName is string;
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'phoneNumber'])
+        && request.resource.data.displayName is string
+        && (!('phoneNumber' in request.resource.data)
+          || (request.resource.data.phoneNumber is string
+            && request.resource.data.phoneNumber.size() <= 32));
       allow delete: if false;
 
       match /businessMemberships/{businessId} {

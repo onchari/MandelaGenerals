@@ -174,6 +174,17 @@ Any authenticated user can create an account and their own business in that
 Firebase project. Business data remains restricted by membership rules.
 Deploy the same Firestore rules to both projects; accounts and business data
 remain separate because the projects are separate.
+The Profile page reads the email address from Firebase Authentication and
+stores the editable display name and optional phone number on the user's
+`users/{uid}` document. It also shows email verification, sends verification
+and password-reset emails, and lists the user's business memberships. Deploy
+the updated `firestore.rules` to each project before using profile edits there.
+After signing in with the Firebase CLI, deploy Firestore rules to Dev and
+Production with one command:
+
+```bash
+npm run deploy:rules:all
+```
 
 Firebase web-app configuration is included in the public frontend bundle, so
 protect data with Authentication and Firestore rules, and never put

@@ -7,7 +7,7 @@
 <meta name="keywords" content="admin, estimates, bootstrap, business, corporate, creative, invoice, html5, responsive, Projects">
 <meta name="author" content="Dreamguys - Bootstrap Admin Template">
 <meta name="robots" content="noindex, nofollow">
-<title>Dreams Pos admin template</title>
+<title>My Profile | Mandela Generals</title>
 
 <link rel="shortcut icon" type="image/x-icon" href="assets/img/favicon.jpg">
 
@@ -188,8 +188,8 @@
 <span class="user-img"><img src="assets/img/profiles/avator1.jpg" alt="">
 <span class="status online"></span></span>
 <div class="profilesets">
-<h6>John Doe</h6>
-<h5>Admin</h5>
+<h6 id="profile-menu-name">Account</h6>
+<h5>Account</h5>
 </div>
 </div>
 <hr class="m-0">
@@ -355,77 +355,66 @@
 
 <div class="card">
 <div class="card-body">
+<p id="profile-message" role="status" aria-live="polite">Checking your sign-in...</p>
+<form id="profile-form" hidden>
 <div class="profile-set">
-<div class="profile-head">
-</div>
 <div class="profile-top">
 <div class="profile-content">
-<div class="profile-contentimg">
-<img src="assets/img/customer/customer5.jpg" alt="img" id="blah">
-<div class="profileupload">
-<input type="file" id="imgInp">
-<a href="javascript:void(0);"><img src="assets/img/icons/edit-set.svg" alt="img"></a>
-</div>
-</div>
 <div class="profile-contentname">
-<h2>William Castillo</h2>
-<h4>Updates Your Photo and Personal Details.</h4>
+<h2 id="profile-name-heading">Your profile</h2>
+<h4>Update your personal details.</h4>
 </div>
 </div>
-<div class="ms-auto">
-<a href="javascript:void(0);" class="btn btn-submit me-2">Save</a>
-<a href="javascript:void(0);" class="btn btn-cancel">Cancel</a>
+<div class="ms-auto d-flex flex-wrap gap-2">
+<button id="profile-save" type="submit" class="btn btn-submit me-2">Save changes</button>
+<button id="profile-cancel" type="button" class="btn btn-cancel">Cancel</button>
 </div>
 </div>
 </div>
 <div class="row">
 <div class="col-lg-6 col-sm-12">
 <div class="form-group">
-<label>First Name</label>
-<input type="text" placeholder="William">
+<label for="profile-display-name">Display name</label>
+<input id="profile-display-name" type="text" maxlength="100" autocomplete="name" required>
 </div>
 </div>
 <div class="col-lg-6 col-sm-12">
 <div class="form-group">
-<label>Last Name</label>
-<input type="text" placeholder="Castilo">
+<label for="profile-email">Email address</label>
+<input id="profile-email" type="email" autocomplete="email" readonly>
 </div>
 </div>
 <div class="col-lg-6 col-sm-12">
 <div class="form-group">
-<label>Email</label>
-<input type="text" placeholder="william@example.com">
+<label for="profile-phone">Phone number</label>
+<input id="profile-phone" type="tel" maxlength="32" autocomplete="tel">
 </div>
 </div>
 <div class="col-lg-6 col-sm-12">
 <div class="form-group">
-<label>Phone</label>
-<input type="text" placeholder="+1452 876 5432">
-</div>
-</div>
-<div class="col-lg-6 col-sm-12">
-<div class="form-group">
-<label>User Name</label>
-<input type="text" placeholder="+1452 876 5432">
-</div>
-</div>
-<div class="col-lg-6 col-sm-12">
-<div class="form-group">
-<label>Password</label>
-<div class="pass-group">
-<input type="password" class=" pass-input">
-<span class="fas toggle-password fa-eye-slash"></span>
+<label>Account created</label>
+<p id="profile-created-at" class="form-control-static">Not available</p>
 </div>
 </div>
 </div>
-<div class="col-12">
-<a href="javascript:void(0);" class="btn btn-submit me-2">Submit</a>
-<a href="javascript:void(0);" class="btn btn-cancel">Cancel</a>
+</form>
+<section id="profile-security" hidden aria-labelledby="profile-security-heading">
+<hr>
+<h5 id="profile-security-heading">Account security</h5>
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+<span>Email verification:</span>
+<strong id="profile-verification-status">Checking...</strong>
+<button id="profile-verification-send" type="button" class="btn btn-cancel" hidden>Send verification email</button>
+<button id="profile-verification-refresh" type="button" class="btn btn-cancel">Refresh status</button>
 </div>
+<button id="profile-password-reset" type="button" class="btn btn-cancel">Send password reset email</button>
+</section>
+<section id="profile-businesses" hidden aria-labelledby="profile-businesses-heading">
+<hr>
+<h5 id="profile-businesses-heading">My businesses</h5>
+<ul id="profile-business-list" class="list-group list-group-flush"></ul>
+</section>
 </div>
-</div>
-</div>
-
 </div>
 </div>
 </div>
@@ -448,5 +437,6 @@
 <script src="assets/plugins/sweetalert/sweetalerts.min.js"></script>
 
 <script src="assets/js/script.js"></script>
+<script type="module" src="/src/profile.ts"></script>
 </body>
 </html>

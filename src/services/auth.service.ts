@@ -1,5 +1,6 @@
 import {
   createUserWithEmailAndPassword,
+  sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
@@ -52,6 +53,11 @@ export async function sendPasswordReset(email: string): Promise<void> {
   }
 
   await sendPasswordResetEmail(authInstance, email.trim());
+}
+
+export async function sendVerificationEmail(user: UserCredential['user']): Promise<void> {
+  assertFirebaseReady();
+  await sendEmailVerification(user);
 }
 
 export async function logout(): Promise<void> {

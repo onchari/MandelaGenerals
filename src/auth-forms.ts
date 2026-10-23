@@ -25,7 +25,11 @@ function getInputValue(selector: string, trim = true): string {
 function getPostAuthUrl(startBusinessSetup = false): string {
   const basePath = import.meta.env.BASE_URL;
   const url = new URL(basePath, window.location.origin);
-  const tenant = new URLSearchParams(window.location.search).get('tenant');
+  const searchParams = new URLSearchParams(window.location.search);
+  const tenant = searchParams.get('tenant');
+  if (!startBusinessSetup && !tenant && searchParams.get('returnTo') === 'profile') {
+    return `${basePath}profile.html`;
+  }
   if (tenant) {
     url.pathname = `${basePath}b/${encodeURIComponent(tenant)}/`;
   }

@@ -19,6 +19,7 @@ export default defineConfig(({ mode }) => {
           signin: resolve(root, 'signin.html'),
           signup: resolve(root, 'signup.html'),
           forgetpassword: resolve(root, 'forgetpassword.html'),
+          profile: resolve(root, 'profile.html'),
           productlist: resolve(root, 'productlist.html'),
           addproduct: resolve(root, 'addproduct.html'),
           editproduct: resolve(root, 'editproduct.html'),
