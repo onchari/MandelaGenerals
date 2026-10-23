@@ -1,25 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function environmentAccessPath() {
-      return /databases/$(database)/documents/environmentConfig/access;
-    }
-
-    function devTesterPath(uid) {
-      return /databases/$(database)/documents/devTesters/$(uid);
-    }
-
     function signedIn() {
-      return request.auth != null
-        && exists(environmentAccessPath())
-        && (
-          get(environmentAccessPath()).data.requireTesterApproval == false
-          || (
-            get(environmentAccessPath()).data.requireTesterApproval == true
-            && exists(devTesterPath(request.auth.uid))
-            && get(devTesterPath(request.auth.uid)).data.enabled == true
-          )
-        );
+      return request.auth != null;
     }
 
     function platformAdminPath(uid) {

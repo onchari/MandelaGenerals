@@ -225,6 +225,15 @@ function renderSetup(user: User, existingBusiness?: ActiveBusiness): void {
   bindLogout();
 }
 
+function consumeBusinessSetupRequest(): boolean {
+  const url = new URL(window.location.href);
+  if (url.searchParams.get('setup') !== 'business') return false;
+
+  url.searchParams.delete('setup');
+  window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  return true;
+}
+
 function renderBusinessPicker(user: User, businesses: ActiveBusiness[]): void {
   setPage('Select a business', `
     <section class="workspace-page">
@@ -600,11 +609,16 @@ if (root) {
     renderHome();
   } else {
     onAuthStateChanged(auth, (user) => {
+      const startBusinessSetup = consumeBusinessSetupRequest();
       if (user) {
         document.body.classList.add('authenticated');
         if (appShell) appShell.hidden = false;
         root = dashboardRoot;
-        void renderAuthenticatedHome(user);
+        if (startBusinessSetup) {
+          renderSetup(user);
+        } else {
+          void renderAuthenticatedHome(user);
+        }
       } else {
         document.body.classList.remove('authenticated');
         document.body.classList.remove('business-setup');
