@@ -1,5 +1,5 @@
 import { login, register, sendPasswordReset } from './services/auth.service';
-import { firebaseEnvironment, firebaseEnvironmentError, isFirebaseConfigured } from './config/firebase';
+import { firebaseEnvironmentError, isFirebaseConfigured } from './config/firebase';
 import './environment-indicator';
 
 function showMessage(element: HTMLElement | null, message: string, isError = true): void {
@@ -22,13 +22,14 @@ function getInputValue(selector: string, trim = true): string {
   return trim ? element.value.trim() : element.value;
 }
 
-function getPostAuthUrl(): string {
+function getPostAuthUrl(startBusinessSetup = false): string {
   const basePath = import.meta.env.BASE_URL;
   const url = new URL(basePath, window.location.origin);
   const tenant = new URLSearchParams(window.location.search).get('tenant');
   if (tenant) {
-    return `${basePath}b/${encodeURIComponent(tenant)}/`;
+    url.pathname = `${basePath}b/${encodeURIComponent(tenant)}/`;
   }
+  if (startBusinessSetup) url.searchParams.set('setup', 'business');
   return `${url.pathname}${url.search}`;
 }
 
@@ -93,17 +94,6 @@ function bindSignUp(): void {
   }
 
   const message = document.querySelector('#signup-message') as HTMLElement | null;
-  if (firebaseEnvironment === 'development') {
-    form.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button').forEach((field) => {
-      field.disabled = true;
-    });
-    showMessage(
-      message,
-      'Development accounts are issued by the project administrator. Use an approved tester account.',
-      true,
-    );
-    return;
-  }
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -128,7 +118,7 @@ function bindSignUp(): void {
 
     try {
       await register(fullName, email, password);
-      window.location.href = getPostAuthUrl();
+      window.location.href = getPostAuthUrl(true);
     } catch (error) {
       const messageText = error instanceof Error ? error.message : 'Unable to create the account.';
       showMessage(message, messageText, true);

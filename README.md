@@ -147,19 +147,33 @@ npm run deploy:dev   # Deploy only the Dev app to Firebase Hosting
 npm run build        # Production build for GitHub Pages
 ```
 
-The Dev deployment uses the `development` Firebase CLI alias and deploys
-Hosting only; it does not update Firestore rules. Production deploys to GitHub
-Pages through GitHub Actions using the `mandelageneralshop` repository
-variables (`VITE_FIREBASE_*`). Dev accounts are separate and restricted by
-Firestore rules to approved testers; self-sign-up is disabled in Dev.
+The Dev deploy script uses the `development` Firebase CLI alias and deploys
+Hosting only; it does not update Firestore rules. To deploy Dev manually:
 
-Create `environmentConfig/access` in both projects. Set
-`requireTesterApproval` to `true` in Dev and `false` in Production. In Dev,
-create `devTesters/{userId}` for each approved Firebase Authentication user
-with `enabled: true`. The rules require these configuration documents and the
-allowlisted Dev tester documents, and deny client writes to them. Deploy the
-same rules to both projects; the database structure and rules stay the same,
-while the configuration and business data differ.
+1. Install the Firebase CLI if needed: `npm install --global firebase-tools`.
+2. Sign in once on this computer: `firebase login`.
+3. Run `npm run deploy:dev`.
+
+This builds the Dev app and deploys only Hosting to `mandelagenerals-dev`.
+Production deploys separately to GitHub Pages through GitHub Actions when
+changes are pushed to `main`. Review and merge tested code to `main` to promote
+the app; neither deployment copies Firestore data or deploys Firestore rules.
+Users can create accounts and businesses in either environment. Dev and
+Production accounts, businesses, and data remain separate because each app
+connects to its own Firebase project.
+
+The Git branch does not select the Firebase project. `npm run dev` always
+starts Vite in development mode and uses `.env.development`, so you can test
+locally on either branch without connecting to Production. When changes are
+ready, push or merge them to `main`; the GitHub Actions workflow builds in
+production mode with the Production Firebase variables. Do not put Production
+credentials in `.env.development`.
+
+Enable Email/Password sign-in in Firebase Authentication in both projects.
+Any authenticated user can create an account and their own business in that
+Firebase project. Business data remains restricted by membership rules.
+Deploy the same Firestore rules to both projects; accounts and business data
+remain separate because the projects are separate.
 
 Firebase web-app configuration is included in the public frontend bundle, so
 protect data with Authentication and Firestore rules, and never put

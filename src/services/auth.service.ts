@@ -6,15 +6,11 @@ import {
   updateProfile,
   type UserCredential,
 } from 'firebase/auth';
-import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { auth, db, assertFirebaseReady, firebaseEnvironment } from '../config/firebase';
+import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { auth, db, assertFirebaseReady } from '../config/firebase';
 
 export async function register(name: string, email: string, password: string): Promise<UserCredential> {
   assertFirebaseReady();
-
-  if (firebaseEnvironment === 'development') {
-    throw new Error('Development accounts are provisioned by a project administrator. Ask for an approved tester account.');
-  }
 
   const authInstance = auth;
   const dbInstance = db;
@@ -44,24 +40,7 @@ export async function login(email: string, password: string): Promise<UserCreden
     throw new Error('Firebase is not configured.');
   }
 
-  const credential = await signInWithEmailAndPassword(authInstance, email.trim(), password);
-
-  if (firebaseEnvironment === 'development') {
-    try {
-      const tester = await getDoc(doc(dbInstance, 'devTesters', credential.user.uid));
-      if (!tester.exists() || tester.data().enabled !== true) {
-        await signOut(authInstance);
-        throw new Error('This account is not approved for the development environment.');
-      }
-    } catch (error) {
-      if (authInstance.currentUser) {
-        await signOut(authInstance);
-      }
-      throw error;
-    }
-  }
-
-  return credential;
+  return signInWithEmailAndPassword(authInstance, email.trim(), password);
 }
 
 export async function sendPasswordReset(email: string): Promise<void> {
