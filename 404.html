@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Manage your business inventory in a secure business workspace.">
   <title>Mandela Generals | Business workspace</title>
+  <script>
+    const legacyBusinessPath = window.location.pathname.match(/^\/MandelaGenerals\/b\/([^/]+)\/?$/);
+    if (legacyBusinessPath) {
+      const destination = new URL('/MandelaGenerals/', window.location.origin);
+      destination.searchParams.set('tenant', decodeURIComponent(legacyBusinessPath[1]));
+      window.location.replace(destination.href);
+    }
+  </script>
   <link rel="stylesheet" href="/src/home.css">
 </head>
 <body>

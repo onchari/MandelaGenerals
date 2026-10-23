@@ -132,7 +132,7 @@ function renderSetup(user: User, existingBusiness?: ActiveBusiness): void {
             <span>Local testing: <code id="local-slug-preview"></code></span>
             <span>GitHub Pages: <code id="github-slug-preview"></code></span>
             <span>Local tenant links use a path on this host so your signed-in session remains active.</span>
-            <span>GitHub Pages uses a path, not subdomains. A custom domain requires a domain and wildcard DNS you control.</span>
+            <span>GitHub Pages tenant links use a query parameter so refreshing works. A custom domain requires a domain and wildcard DNS you control.</span>
           </div>
           <p id="workspace-error" class="workspace-error" role="alert" hidden></p>
           <button class="home-button" type="submit">${claimingAddress ? 'Claim tenant address' : 'Create business'}</button>
@@ -334,7 +334,34 @@ function renderError(message: string): void {
   root?.querySelector<HTMLButtonElement>('#workspace-retry')?.addEventListener('click', () => window.location.reload());
 }
 
+function bindProfileMenu(): void {
+  const trigger = appShell?.querySelector<HTMLAnchorElement>('[data-profile-menu-trigger]');
+  const menu = appShell?.querySelector<HTMLElement>('[data-profile-menu]');
+  if (!trigger || !menu || trigger.dataset.profileMenuBound === 'true') return;
+
+  const closeMenu = (): void => {
+    menu.classList.remove('show');
+    trigger.setAttribute('aria-expanded', 'false');
+  };
+
+  trigger.dataset.profileMenuBound = 'true';
+  trigger.addEventListener('click', (event) => {
+    event.preventDefault();
+    const isOpen = menu.classList.toggle('show');
+    trigger.setAttribute('aria-expanded', String(isOpen));
+  });
+  document.addEventListener('click', (event) => {
+    if (event.target instanceof Node && !trigger.contains(event.target) && !menu.contains(event.target)) {
+      closeMenu();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeMenu();
+  });
+}
+
 function bindLogout(): void {
+  bindProfileMenu();
   root?.querySelectorAll<HTMLButtonElement>('[data-logout]').forEach((button) => {
     if (button.dataset.logoutBound === 'true') return;
     button.dataset.logoutBound = 'true';
