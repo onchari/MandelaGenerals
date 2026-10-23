@@ -335,33 +335,103 @@ function renderError(message: string): void {
 }
 
 function bindProfileMenu(): void {
-  const trigger = appShell?.querySelector<HTMLAnchorElement>('[data-profile-menu-trigger]');
-  const menu = appShell?.querySelector<HTMLElement>('[data-profile-menu]');
-  if (!trigger || !menu || trigger.dataset.profileMenuBound === 'true') return;
+  appShell?.querySelectorAll<HTMLButtonElement>('[data-profile-menu-trigger]').forEach((trigger) => {
+    const menu = document.getElementById(trigger.getAttribute('aria-controls') ?? '');
+    if (!menu || trigger.dataset.profileMenuBound === 'true') return;
 
-  const closeMenu = (): void => {
-    menu.classList.remove('show');
-    trigger.setAttribute('aria-expanded', 'false');
-  };
+    const closeMenu = (): void => {
+      menu.classList.remove('show');
+      trigger.setAttribute('aria-expanded', 'false');
+    };
 
-  trigger.dataset.profileMenuBound = 'true';
-  trigger.addEventListener('click', (event) => {
-    event.preventDefault();
-    const isOpen = menu.classList.toggle('show');
-    trigger.setAttribute('aria-expanded', String(isOpen));
+    trigger.dataset.profileMenuBound = 'true';
+    trigger.addEventListener('click', () => {
+      const isOpen = menu.classList.toggle('show');
+      trigger.setAttribute('aria-expanded', String(isOpen));
+    });
+    document.addEventListener('click', (event) => {
+      if (event.target instanceof Node && !trigger.contains(event.target) && !menu.contains(event.target)) {
+        closeMenu();
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeMenu();
+    });
   });
-  document.addEventListener('click', (event) => {
-    if (event.target instanceof Node && !trigger.contains(event.target) && !menu.contains(event.target)) {
-      closeMenu();
-    }
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closeMenu();
-  });
+}
+
+function bindSidebarMenus(): void {
+  const sidebarMenu = appShell?.querySelector<HTMLElement>('#sidebar-menu');
+  if (sidebarMenu && sidebarMenu.dataset.nativeMenusBound !== 'true') {
+    sidebarMenu.dataset.nativeMenusBound = 'true';
+    sidebarMenu.querySelectorAll<HTMLAnchorElement>('li.submenu > a').forEach((link, index) => {
+      const submenu = link.nextElementSibling;
+      if (!(submenu instanceof HTMLUListElement)) return;
+
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = link.className;
+      button.innerHTML = link.innerHTML;
+      button.setAttribute('aria-expanded', 'false');
+      button.setAttribute('aria-controls', `sidebar-submenu-${index}`);
+      submenu.id = `sidebar-submenu-${index}`;
+      link.replaceWith(button);
+    });
+
+    sidebarMenu.addEventListener('click', (event) => {
+      if (!(event.target instanceof Element)) return;
+      const button = event.target.closest<HTMLButtonElement>('li.submenu > button[aria-controls]');
+      if (!button || !sidebarMenu.contains(button)) return;
+
+      const submenu = document.getElementById(button.getAttribute('aria-controls') ?? '');
+      if (!(submenu instanceof HTMLUListElement)) return;
+
+      const expanded = button.getAttribute('aria-expanded') !== 'true';
+      button.classList.toggle('subdrop', expanded);
+      button.setAttribute('aria-expanded', String(expanded));
+    }, true);
+  }
+
+  let overlay = document.querySelector<HTMLElement>('.sidebar-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'sidebar-overlay';
+    document.body.append(overlay);
+  }
+  if (overlay.dataset.nativeToggleBound !== 'true') {
+    overlay.dataset.nativeToggleBound = 'true';
+    overlay.addEventListener('click', (event) => {
+      event.stopImmediatePropagation();
+      overlay?.classList.remove('opened');
+      appShell?.classList.remove('slide-nav');
+    }, true);
+  }
+
+  const sidebarToggle = appShell?.querySelector<HTMLAnchorElement>('#toggle_btn');
+  if (sidebarToggle && sidebarToggle.dataset.nativeToggleBound !== 'true') {
+    sidebarToggle.dataset.nativeToggleBound = 'true';
+    sidebarToggle.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      document.body.classList.toggle('mini-sidebar');
+    }, true);
+  }
+
+  const mobileToggle = appShell?.querySelector<HTMLAnchorElement>('#mobile_btn');
+  if (mobileToggle && mobileToggle.dataset.nativeToggleBound !== 'true') {
+    mobileToggle.dataset.nativeToggleBound = 'true';
+    mobileToggle.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const isOpen = appShell?.classList.toggle('slide-nav') ?? false;
+      overlay.classList.toggle('opened', isOpen);
+    }, true);
+  }
 }
 
 function bindLogout(): void {
   bindProfileMenu();
+  bindSidebarMenus();
   root?.querySelectorAll<HTMLButtonElement>('[data-logout]').forEach((button) => {
     if (button.dataset.logoutBound === 'true') return;
     button.dataset.logoutBound = 'true';
