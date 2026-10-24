@@ -13,18 +13,18 @@ import {
 import { assertFirebaseReady, db } from '../../config/firebase';
 import type { Product, ProductInput } from './types';
 
-function productsCollection(businessId: string) {
+function productsCollection(businessId: string, branchId: string) {
   assertFirebaseReady();
 
   const dbInstance = db;
   if (!dbInstance) {
     throw new Error('Firebase is not configured.');
   }
-  if (!businessId.trim()) {
-    throw new Error('Select an active business first.');
+  if (!businessId.trim() || !branchId.trim()) {
+    throw new Error('Select an active business and branch first.');
   }
 
-  return collection(dbInstance, 'businesses', businessId, 'products');
+  return collection(dbInstance, 'businesses', businessId, 'branches', branchId, 'products');
 }
 
 function normalizeProduct(input: ProductInput): ProductInput {
@@ -71,18 +71,18 @@ function productFromData(id: string, data: Record<string, unknown>): Product {
   };
 }
 
-export async function getProducts(businessId: string): Promise<Product[]> {
-  const snapshot = await getDocs(query(productsCollection(businessId), orderBy('name')));
+export async function getProducts(businessId: string, branchId: string): Promise<Product[]> {
+  const snapshot = await getDocs(query(productsCollection(businessId, branchId), orderBy('name')));
   return snapshot.docs.map((item) => productFromData(item.id, item.data()));
 }
 
-export async function getProduct(businessId: string, productId: string): Promise<Product | null> {
-  const snapshot = await getDoc(doc(productsCollection(businessId), productId));
+export async function getProduct(businessId: string, branchId: string, productId: string): Promise<Product | null> {
+  const snapshot = await getDoc(doc(productsCollection(businessId, branchId), productId));
   return snapshot.exists() ? productFromData(snapshot.id, snapshot.data()) : null;
 }
 
-export async function addProduct(businessId: string, input: ProductInput): Promise<string> {
-  const result = await addDoc(productsCollection(businessId), {
+export async function addProduct(businessId: string, branchId: string, input: ProductInput): Promise<string> {
+  const result = await addDoc(productsCollection(businessId, branchId), {
     ...normalizeProduct(input),
     createdAt: serverTimestamp(),
   });
@@ -91,12 +91,13 @@ export async function addProduct(businessId: string, input: ProductInput): Promi
 
 export async function updateProduct(
   businessId: string,
+  branchId: string,
   productId: string,
   input: ProductInput,
 ): Promise<void> {
-  await updateDoc(doc(productsCollection(businessId), productId), normalizeProduct(input));
+  await updateDoc(doc(productsCollection(businessId, branchId), productId), normalizeProduct(input));
 }
 
-export async function deleteProduct(businessId: string, productId: string): Promise<void> {
-  await deleteDoc(doc(productsCollection(businessId), productId));
+export async function deleteProduct(businessId: string, branchId: string, productId: string): Promise<void> {
+  await deleteDoc(doc(productsCollection(businessId, branchId), productId));
 }

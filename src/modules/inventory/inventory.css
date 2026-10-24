@@ -28,6 +28,33 @@
   margin: 5px 0 0;
 }
 
+.inventory-module .inventory-branch-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--inventory-muted);
+  font-size: 13px;
+}
+
+.inventory-module .inventory-branch-picker select {
+  min-width: 140px;
+  border: 1px solid var(--inventory-border);
+  border-radius: 6px;
+  padding: 7px 9px;
+  color: #1d2939;
+  background: #fff;
+}
+
+.inventory-module .inventory-legacy-notice {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid #f3d27a;
+  border-radius: 7px;
+  color: #6c4a00;
+  background: #fff8e5;
+  line-height: 1.5;
+}
+
 .inventory-module .inventory-card {
   background: #fff;
   border: 1px solid var(--inventory-border);

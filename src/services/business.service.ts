@@ -1,9 +1,14 @@
 import {
   collection,
+  collectionGroup,
   doc,
   getDoc,
   getDocs,
+  getDocsFromServer,
+  query,
   serverTimestamp,
+  Timestamp,
+  where,
   writeBatch,
 } from 'firebase/firestore';
 import { auth, db, assertFirebaseReady } from '../config/firebase';
@@ -13,6 +18,9 @@ export interface ActiveBusiness {
   name: string;
   slug: string;
   role: 'owner' | 'admin' | 'manager' | 'cashier' | 'staff';
+  branchIds?: string[];
+  allBranches?: boolean;
+  branchWorkspaceMode?: 'isolated';
 }
 
 export interface PlatformBusiness {
@@ -20,12 +28,25 @@ export interface PlatformBusiness {
   name: string;
   slug: string;
   ownerId: string;
+  createdAt: string | null;
+  status: string | null;
+  plan: string | null;
 }
 
 export interface PlatformUser {
   id: string;
   displayName: string;
   email: string;
+}
+
+export interface PlatformTenantAdmin {
+  id: string;
+  displayName: string;
+  email: string;
+  businessId: string;
+  businessName: string;
+  role: 'owner' | 'admin';
+  active: boolean | null;
 }
 
 const roleValues = ['owner', 'admin', 'manager', 'cashier', 'staff'] as const;
@@ -62,21 +83,34 @@ export async function getUserBusinesses(userId: string): Promise<ActiveBusiness[
     ) {
       throw new Error(`Business membership ${membership.id} has invalid data.`);
     }
+    if (
+      data.branchIds !== undefined &&
+      (!Array.isArray(data.branchIds) || !data.branchIds.every((branchId) => typeof branchId === 'string'))
+    ) {
+      throw new Error(`Business membership ${membership.id} has invalid branch assignments.`);
+    }
+    if (data.allBranches !== undefined && typeof data.allBranches !== 'boolean') {
+      throw new Error(`Business membership ${membership.id} has an invalid all-branches setting.`);
+    }
     return [{
       id: membership.id,
       name: data.businessName,
       slug: typeof data.slug === 'string' ? data.slug : '',
       role: data.role,
+      ...(Array.isArray(data.branchIds) ? { branchIds: data.branchIds } : {}),
+      ...(typeof data.allBranches === 'boolean' ? { allBranches: data.allBranches } : {}),
+      ...(data.branchWorkspaceMode === 'isolated' ? { branchWorkspaceMode: 'isolated' as const } : {}),
     }];
   });
   const businesses = await Promise.all(memberships.map(async (membership) => {
     if (membership.slug) return membership;
     const businessSnapshot = await getDoc(doc(dbInstance, 'businesses', membership.id));
     if (!businessSnapshot.exists()) return membership;
-    const slug = businessSnapshot.data().slug;
+    const business = businessSnapshot.data();
     return {
       ...membership,
-      slug: typeof slug === 'string' ? slug : '',
+      slug: membership.slug || (typeof business.slug === 'string' ? business.slug : ''),
+      ...(business.branchWorkspaceMode === 'isolated' ? { branchWorkspaceMode: 'isolated' as const } : {}),
     };
   }));
   if (businesses.length > 0) return businesses;
@@ -120,14 +154,27 @@ export async function getPlatformBusinesses(): Promise<PlatformBusiness[]> {
   assertFirebaseReady();
   const dbInstance = db;
   if (!dbInstance) throw new Error('Firebase is not configured.');
-  const snapshot = await getDocs(collection(dbInstance, 'businesses'));
+  const snapshot = await getDocsFromServer(collection(dbInstance, 'businesses'));
   return snapshot.docs.map((business) => {
     const data = business.data();
+    if (typeof data.name !== 'string' || !data.name.trim()) {
+      throw new Error(`Business ${business.id} has no valid name.`);
+    }
+    const createdAt = data.createdAt instanceof Timestamp
+      ? data.createdAt.toDate().toISOString()
+      : null;
     return {
       id: business.id,
-      name: typeof data.name === 'string' ? data.name : 'Unnamed business',
+      name: data.name,
       slug: typeof data.slug === 'string' ? data.slug : '',
       ownerId: typeof data.ownerId === 'string' ? data.ownerId : 'Unknown',
+      createdAt,
+      status: typeof data.status === 'string' ? data.status : null,
+      plan: typeof data.plan === 'string'
+        ? data.plan
+        : typeof data.planName === 'string'
+          ? data.planName
+          : null,
     };
   });
 }
@@ -136,7 +183,7 @@ export async function getPlatformUsers(): Promise<PlatformUser[]> {
   assertFirebaseReady();
   const dbInstance = db;
   if (!dbInstance) throw new Error('Firebase is not configured.');
-  const snapshot = await getDocs(collection(dbInstance, 'users'));
+  const snapshot = await getDocsFromServer(collection(dbInstance, 'users'));
   return snapshot.docs.map((user) => {
     const data = user.data();
     return {
@@ -145,6 +192,54 @@ export async function getPlatformUsers(): Promise<PlatformUser[]> {
       email: typeof data.email === 'string' ? data.email : '',
     };
   });
+}
+
+export async function getPlatformTenantAdmins(): Promise<PlatformTenantAdmin[]> {
+  assertFirebaseReady();
+  const dbInstance = db;
+  if (!dbInstance) throw new Error('Firebase is not configured.');
+
+  const [membershipSnapshot, userSnapshot, businessSnapshot] = await Promise.all([
+    getDocsFromServer(query(
+      collectionGroup(dbInstance, 'businessMemberships'),
+      where('role', 'in', ['owner', 'admin']),
+    )),
+    getDocsFromServer(collection(dbInstance, 'users')),
+    getDocsFromServer(collection(dbInstance, 'businesses')),
+  ]);
+  const usersById = new Map(userSnapshot.docs.map((user) => {
+    const data = user.data();
+    return [user.id, {
+      displayName: typeof data.displayName === 'string' ? data.displayName : 'Unknown user',
+      email: typeof data.email === 'string' ? data.email : '',
+    }];
+  }));
+  const businessesById = new Map(businessSnapshot.docs.map((business) => {
+    const data = business.data();
+    return [business.id, typeof data.name === 'string' ? data.name : 'Unknown business'];
+  }));
+
+  return membershipSnapshot.docs.map((membership) => {
+    const data = membership.data();
+    const userId = membership.ref.parent.parent?.id;
+    if (!userId || (data.role !== 'owner' && data.role !== 'admin')) {
+      throw new Error(`Tenant admin membership ${membership.ref.path} has invalid data.`);
+    }
+
+    return {
+      id: `${membership.id}:${userId}`,
+      displayName: usersById.get(userId)?.displayName ?? 'Unknown user',
+      email: usersById.get(userId)?.email ?? '',
+      businessId: membership.id,
+      businessName: businessesById.get(membership.id) ??
+        (typeof data.businessName === 'string' ? data.businessName : 'Unknown business'),
+      role: data.role,
+      active: typeof data.active === 'boolean' ? data.active : null,
+    };
+  }).sort((left, right) =>
+    left.businessName.localeCompare(right.businessName) ||
+    left.displayName.localeCompare(right.displayName),
+  );
 }
 
 export async function assignExistingUsersToDemoTenant(): Promise<number> {
@@ -185,6 +280,20 @@ export async function assignExistingUsersToDemoTenant(): Promise<number> {
       slug,
       ownerId: userId,
       createdAt: timestamp,
+      primaryBranchId: 'main',
+      branchWorkspaceMode: 'isolated',
+    });
+    batch.set(doc(dbInstance, 'businesses', businessId, 'branches', 'main'), {
+      name: 'Main branch',
+      status: 'active',
+      createdAt: timestamp,
+      isPrimary: true,
+    });
+    batch.set(doc(dbInstance, 'businesses', businessId, 'branches', 'main', 'settings', 'workspace'), {
+      parentBusinessId: businessId,
+      branchId: 'main',
+      inventoryMode: 'branch_scoped',
+      createdAt: timestamp,
     });
     batch.set(doc(dbInstance, 'businessSlugs', slug), {
       businessId,
@@ -194,6 +303,8 @@ export async function assignExistingUsersToDemoTenant(): Promise<number> {
       role: 'owner',
       active: true,
       joinedAt: timestamp,
+      branchIds: ['main'],
+      allBranches: true,
     });
     batch.set(doc(dbInstance, 'users', userId, 'businessMemberships', businessId), {
       businessName: 'Demo',
@@ -201,6 +312,9 @@ export async function assignExistingUsersToDemoTenant(): Promise<number> {
       role: 'owner',
       active: true,
       joinedAt: timestamp,
+      branchIds: ['main'],
+      allBranches: true,
+      branchWorkspaceMode: 'isolated',
     });
     await batch.commit();
   }
@@ -215,6 +329,14 @@ export async function assignExistingUsersToDemoTenant(): Promise<number> {
   ) {
     throw new Error('The platform admin must have an active owner membership in the Demo tenant.');
   }
+  const demoMainBranch = await getDoc(doc(dbInstance, 'businesses', businessId, 'branches', 'main'));
+  const demoBranchAssignment = demoMainBranch.data()?.status === 'active'
+    ? { branchIds: ['main'], allBranches: false }
+    : {};
+  const demoBusinessSnapshot = await getDoc(doc(dbInstance, 'businesses', businessId));
+  const demoWorkspaceMode = demoBusinessSnapshot.data()?.branchWorkspaceMode === 'isolated'
+    ? { branchWorkspaceMode: 'isolated' as const }
+    : {};
 
   const userSnapshots = await getDocs(collection(dbInstance, 'users'));
   const usersWithoutMembership: string[] = [];
@@ -239,6 +361,7 @@ export async function assignExistingUsersToDemoTenant(): Promise<number> {
         role: 'staff',
         active: true,
         joinedAt: timestamp,
+        ...demoBranchAssignment,
       });
       batch.set(doc(dbInstance, 'users', memberId, 'businessMemberships', businessId), {
         businessName: 'Demo',
@@ -246,6 +369,8 @@ export async function assignExistingUsersToDemoTenant(): Promise<number> {
         role: 'staff',
         active: true,
         joinedAt: timestamp,
+        ...demoBranchAssignment,
+        ...demoWorkspaceMode,
       });
     }
     await batch.commit();
@@ -432,6 +557,20 @@ export async function createBusiness(name: string, requestedSlug: string): Promi
     slug,
     ownerId,
     createdAt: timestamp,
+    primaryBranchId: 'main',
+    branchWorkspaceMode: 'isolated',
+  });
+  batch.set(doc(dbInstance, 'businesses', businessRef.id, 'branches', 'main'), {
+    name: 'Main branch',
+    status: 'active',
+    createdAt: timestamp,
+    isPrimary: true,
+  });
+  batch.set(doc(dbInstance, 'businesses', businessRef.id, 'branches', 'main', 'settings', 'workspace'), {
+    parentBusinessId: businessRef.id,
+    branchId: 'main',
+    inventoryMode: 'branch_scoped',
+    createdAt: timestamp,
   });
   batch.set(doc(dbInstance, 'businessSlugs', slug), {
     businessId: businessRef.id,
@@ -441,6 +580,8 @@ export async function createBusiness(name: string, requestedSlug: string): Promi
     role: 'owner',
     active: true,
     joinedAt: timestamp,
+    branchIds: ['main'],
+    allBranches: true,
   });
   batch.set(doc(dbInstance, 'users', ownerId, 'businessMemberships', businessRef.id), {
     businessName: normalizedName,
@@ -448,8 +589,19 @@ export async function createBusiness(name: string, requestedSlug: string): Promi
     role: 'owner',
     active: true,
     joinedAt: timestamp,
+    branchIds: ['main'],
+    allBranches: true,
+    branchWorkspaceMode: 'isolated',
   });
   await batch.commit();
 
-  return { id: businessRef.id, name: normalizedName, slug, role: 'owner' };
+  return {
+    id: businessRef.id,
+    name: normalizedName,
+    slug,
+    role: 'owner',
+    branchIds: ['main'],
+    allBranches: true,
+    branchWorkspaceMode: 'isolated',
+  };
 }

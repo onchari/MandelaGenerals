@@ -27,6 +27,9 @@ function getPostAuthUrl(startBusinessSetup = false): string {
   const url = new URL(basePath, window.location.origin);
   const searchParams = new URLSearchParams(window.location.search);
   const tenant = searchParams.get('tenant');
+  if (!startBusinessSetup && searchParams.get('returnTo') === 'platform-admin') {
+    return `${basePath}platform-admin.html`;
+  }
   if (!startBusinessSetup && !tenant && searchParams.get('returnTo') === 'profile') {
     return `${basePath}profile.html`;
   }

@@ -9,6 +9,7 @@ import {
 } from 'firebase/auth';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db, assertFirebaseReady } from '../config/firebase';
+import { defaultUserAccessMetadata } from '../types/user';
 
 export async function register(name: string, email: string, password: string): Promise<UserCredential> {
   assertFirebaseReady();
@@ -27,6 +28,7 @@ export async function register(name: string, email: string, password: string): P
     displayName: name.trim(),
     email: credential.user.email,
     createdAt: serverTimestamp(),
+    ...defaultUserAccessMetadata,
   });
 
   return credential;

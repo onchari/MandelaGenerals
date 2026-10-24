@@ -13,6 +13,7 @@ import {
   setSelectedBusiness,
   type ActiveBusiness,
 } from '../../services/business.service';
+import { getAccessibleBusinessBranches, type BusinessBranch } from '../../services/branch.service';
 import { addProduct, deleteProduct, getProduct, getProducts, updateProduct } from './service';
 import type { InventoryPage, Product, ProductInput } from './types';
 import '../../environment-indicator';
@@ -30,6 +31,8 @@ const page = pageByPath[window.location.pathname.split('/').pop() ?? ''] ?? 'lis
 let activeBusiness: ActiveBusiness | null = null;
 let currentUser: User | null = null;
 let products: Product[] = [];
+let accessibleBranches: BusinessBranch[] = [];
+let activeBranch: BusinessBranch | null = null;
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({
@@ -60,6 +63,7 @@ function pageHref(pageName: string, productId?: string): string {
     : new URL(pageName, window.location.origin + import.meta.env.BASE_URL).href;
   const url = new URL(href, window.location.origin);
   if (productId) url.searchParams.set('id', productId);
+  if (activeBranch) url.searchParams.set('branchId', activeBranch.id);
   return url.origin === window.location.origin ? `${url.pathname}${url.search}` : url.href;
 }
 
@@ -76,15 +80,26 @@ function renderShell(title: string, subtitle: string, body: string): void {
         <div><h2>${escapeHtml(title)}</h2><p>${subtitle}</p></div>
         <nav class="inventory-actions" aria-label="Inventory">
           ${activeBusiness ? '<button class="btn btn-outline-secondary" id="switch-business" type="button">Switch business</button>' : ''}
+          ${activeBranch ? `<label class="inventory-branch-picker">Branch
+            <select id="inventory-branch-picker" aria-label="Select branch">${accessibleBranches.map((branch) => `<option value="${escapeHtml(branch.id)}"${branch.id === activeBranch?.id ? ' selected' : ''}>${escapeHtml(branch.name)}</option>`).join('')}</select>
+          </label>` : ''}
           <a class="btn btn-primary" href="${pageHref('productlist.html')}">Products</a>
           ${canManageInventory() ? `<a class="btn btn-primary" href="${pageHref('addproduct.html')}">Add product</a>` : ''}
           <a class="btn btn-primary" href="${pageHref('inventoryreport.html')}">Inventory report</a>
         </nav>
       </header>
+      ${activeBusiness && activeBusiness.branchWorkspaceMode !== 'isolated' ? `<div class="inventory-legacy-notice" role="note"><strong>Legacy inventory is not migrated.</strong> Products previously stored at the business level are separate from this branch's inventory. They are not displayed or copied here; do not assume their quantities belong to this branch.</div>` : ''}
       <div data-message role="status" hidden></div>
       ${body}
     </section>`;
 
+  content.querySelector<HTMLSelectElement>('#inventory-branch-picker')?.addEventListener('change', (event) => {
+    const branchId = (event.currentTarget as HTMLSelectElement).value;
+    const url = new URL(window.location.href);
+    url.searchParams.set('branchId', branchId);
+    url.searchParams.delete('id');
+    window.location.assign(`${url.pathname}${url.search}`);
+  });
   content.querySelector<HTMLButtonElement>('#switch-business')?.addEventListener('click', async () => {
     if (!currentUser) return;
     try {
@@ -221,6 +236,8 @@ function renderBusinessSelection(user: User, businesses: ActiveBusiness[]): void
     }
     setSelectedBusiness(user.uid, business.id);
     activeBusiness = business;
+    activeBranch = null;
+    accessibleBranches = [];
     const pageName = window.location.pathname.split('/').pop() || 'productlist.html';
     window.location.assign(pageHref(pageName));
   });
@@ -277,7 +294,7 @@ function bindProductTable(initialRows: Product[], lowStockOnly = false): void {
         if (!productId || !product || !window.confirm(`Delete "${product.name}"? This cannot be undone.`)) return;
         button.disabled = true;
         try {
-          await deleteProduct(activeBusiness!.id, productId);
+          await deleteProduct(activeBusiness!.id, activeBranch!.id, productId);
           await loadInventory(currentUser ?? undefined);
         } catch (error) {
           showMessage(error instanceof Error ? error.message : 'Could not delete the product.');
@@ -295,7 +312,7 @@ function renderProductList(lowStockOnly = false): void {
   const lowStockCount = products.filter((product) => product.quantity <= product.reorderLevel).length;
   const totalUnits = products.reduce((total, product) => total + product.quantity, 0);
   const title = lowStockOnly ? 'Low stock report' : 'Product inventory';
-  renderShell(title, `Business: ${escapeHtml(activeBusiness!.name)}`, `
+  renderShell(title, `Business: ${escapeHtml(activeBusiness!.name)} · Branch: ${escapeHtml(activeBranch!.name)}`, `
     <div class="inventory-stats">
       <article class="inventory-card inventory-stat"><span>Products</span><strong>${products.length}</strong></article>
       <article class="inventory-card inventory-stat"><span>Total units in stock</span><strong>${formatAmount(totalUnits)}</strong></article>
@@ -374,9 +391,9 @@ function bindProductForm(product?: Product): void {
     try {
       const input = readProductForm(form);
       if (product) {
-        await updateProduct(activeBusiness!.id, product.id, input);
+        await updateProduct(activeBusiness!.id, activeBranch!.id, product.id, input);
       } else {
-        await addProduct(activeBusiness!.id, input);
+        await addProduct(activeBusiness!.id, activeBranch!.id, input);
       }
       window.location.href = pageHref('productlist.html');
     } catch (error) {
@@ -390,16 +407,16 @@ function renderProductForm(product?: Product): void {
   const dashboard = activeBusiness!.slug
     ? ` · <a href="${escapeHtml(getBusinessUrl(activeBusiness!.slug))}">Dashboard</a>`
     : '';
-  renderShell(product ? 'Edit product' : 'Add product', `Business: ${escapeHtml(activeBusiness!.name)}${dashboard}`, productFormMarkup(product));
+  renderShell(product ? 'Edit product' : 'Add product', `Business: ${escapeHtml(activeBusiness!.name)} · Branch: ${escapeHtml(activeBranch!.name)}${dashboard}`, productFormMarkup(product));
   bindProductForm(product);
 }
 
 function renderDetails(product: Product | undefined): void {
   if (!product) {
-    renderShell('Product not found', `Business: ${escapeHtml(activeBusiness!.name)}`, `<div class="inventory-card">This product no longer exists. <a href="${pageHref('productlist.html')}">Return to inventory</a>.</div>`);
+    renderShell('Product not found', `Business: ${escapeHtml(activeBusiness!.name)} · Branch: ${escapeHtml(activeBranch!.name)}`, `<div class="inventory-card">This product no longer exists in this branch. <a href="${pageHref('productlist.html')}">Return to inventory</a>.</div>`);
     return;
   }
-  renderShell(product.name, `Business: ${escapeHtml(activeBusiness!.name)}`, `
+  renderShell(product.name, `Business: ${escapeHtml(activeBusiness!.name)} · Branch: ${escapeHtml(activeBranch!.name)}`, `
     <div class="inventory-card">
       <dl class="row">
         <dt class="col-sm-4">SKU</dt><dd class="col-sm-8">${escapeHtml(product.sku || '—')}</dd>
@@ -417,11 +434,23 @@ async function renderPage(): Promise<void> {
   if (!activeBusiness) {
     return;
   }
+  if (!activeBranch) {
+    const branchChoices = accessibleBranches.map((branch) => {
+      const url = new URL(window.location.href);
+      url.searchParams.set('branchId', branch.id);
+      url.searchParams.delete('id');
+      return `<li><a href="${escapeHtml(`${url.pathname}${url.search}`)}">${escapeHtml(branch.name)}</a></li>`;
+    }).join('');
+    renderShell('Branch unavailable', `Business: ${escapeHtml(activeBusiness.name)}`, `<div class="inventory-card">${branchChoices
+      ? `<p>Select one of your assigned branches:</p><ul>${branchChoices}</ul>`
+      : 'You do not have access to an active branch in this business. Ask the business owner to assign your branch access.'}</div>`);
+    return;
+  }
   if ((page === 'add' || page === 'edit') && !canManageInventory()) {
     renderShell('Access restricted', 'Your business role does not allow inventory changes.', '<div class="inventory-card">Contact a business owner or manager if you need access.</div>');
     return;
   }
-  products = await getProducts(activeBusiness.id);
+  products = await getProducts(activeBusiness.id, activeBranch.id);
   if (page === 'list') {
     renderProductList();
     return;
@@ -440,7 +469,7 @@ async function renderPage(): Promise<void> {
     renderDetails(undefined);
     return;
   }
-  const product = await getProduct(activeBusiness.id, productId) ?? undefined;
+  const product = await getProduct(activeBusiness.id, activeBranch.id, productId) ?? undefined;
   if (page === 'edit') {
     product ? renderProductForm(product) : renderDetails(undefined);
   } else {
@@ -452,6 +481,8 @@ async function loadInventory(user?: User): Promise<void> {
   if (!content) return;
   currentUser = user ?? null;
   activeBusiness = null;
+  activeBranch = null;
+  accessibleBranches = [];
   if (!isFirebaseConfigured || !auth) {
     renderShell('Firebase setup required', 'Configure Firebase before using inventory.', '<div class="inventory-card">Set the VITE_FIREBASE_* values in .env.local, then restart the development server.</div>');
     return;
@@ -481,6 +512,21 @@ async function loadInventory(user?: User): Promise<void> {
       return;
     }
     setSelectedBusiness(user.uid, activeBusiness.id);
+    accessibleBranches = await getAccessibleBusinessBranches(
+      activeBusiness.id,
+      activeBusiness.role,
+      activeBusiness.branchIds,
+      activeBusiness.allBranches,
+    );
+    const requestedBranchId = new URLSearchParams(window.location.search).get('branchId');
+    activeBranch = requestedBranchId
+      ? accessibleBranches.find((branch) => branch.id === requestedBranchId) ?? null
+      : accessibleBranches[0] ?? null;
+    if (activeBranch && !requestedBranchId) {
+      const url = new URL(window.location.href);
+      url.searchParams.set('branchId', activeBranch.id);
+      window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+    }
     await renderPage();
   } catch (error) {
     renderShell('Could not load inventory', `Business: ${escapeHtml(activeBusiness?.name ?? 'not selected')}`, '<div class="inventory-card"><p data-load-error></p><button class="btn btn-primary" type="button" id="inventory-retry">Try again</button></div>');

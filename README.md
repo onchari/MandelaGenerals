@@ -1,232 +1,139 @@
-# 📊 Inventory Management Admin Dashboard (TypeScript + Firebase Ready)
+# Mandela Generals
 
-[![Live Demo](https://img.shields.io/badge/Demo-Live%20Preview-blue?style=for-the-badge)](https://onchari.github.io/MandelaGenerals/)
-[![GitHub Repo](https://img.shields.io/badge/Code-GitHub-black?style=for-the-badge&logo=github)](https://github.com/onchari/MandelaGenerals)
+Mandela is a multi-tenant business management application built on a legacy HTML dashboard shell, TypeScript, Vite, Firebase Authentication, and Cloud Firestore. Its current implemented scope includes account access, business setup and selection, branch-scoped product inventory for new businesses, a business-owner dashboard, opt-in existing-account onboarding with fixed business-role assignment, branch setup and assignment, and a separately gated platform-admin area.
 
-This project now follows the shared multi-tenant business app template: the existing HTML/CSS dashboard is retained as the UI shell, while the app is structured for **Vite + TypeScript**, **Firebase Authentication**, and **Cloud Firestore**. This allows the same dashboard to be adapted into a business-specific, multi-tenant inventory system while remaining deployable on **GitHub Pages** as a static frontend.
+> **Implementation status:** This is an incremental implementation, not a claim that every requirement in the product specification is complete. Branch-specific roles, legacy inventory migration, stock movement and transfer workflows, POS, invitation delivery, configurable permissions, billing, and audit logging are not fully implemented. Firestore rules must be reviewed and deployed separately; a successful frontend build does not validate deployment or live authorization.
 
----
+## Start here
 
-## 🔎 Table of Contents
+| Document | Contents |
+| --- | --- |
+| [Implementation guide](./docs/IMPLEMENTATION.md) | Implemented workflows, code locations, database interactions, validation evidence, limitations, and development documentation practices. |
+| [Architecture](./docs/ARCHITECTURE.md) | Application layers, tenant hierarchy, request flows, and environment boundaries. |
+| [Database guide](./docs/DATABASE.md) | Firestore collections, fields, relationships, branch schema, and migration cautions. |
+| [Security guide](./docs/SECURITY.md) | Authentication, membership and branch authorization, platform-admin separation, rules deployment, and testing limitations. |
+| [Implementation status and delivery checklist](./docs/IMPLEMENTATION-STATUS.md) | Consolidated capability status, tenant checklist, environment and deployment notes, and validation evidence. |
+| [Platform admin guide](./docs/platform-admin-guide.md) | Platform-admin UI behavior, local access, and placeholder boundaries. |
+| [Platform admin backlog](./docs/platform-admin-tasks-and-improvements.md) | Future backend, data, security, and operational work for platform administration. |
+| [Software requirements specification](./docs/MANDELA-SOFTWARE-REQUIREMENTS-SPECIFICATION.md) | Product-wide requirements baseline, including future capabilities. |
+| [Copilot project instructions](./.github/copilot-instructions.md) | Requires relevant Markdown documentation to be updated alongside project changes. |
 
-- [✨ Features](#-features)
-- [🧱 Tech Stack](#-tech-stack)
-- [📂 Project Structure](#-project-structure)
-- [🚀 Getting Started](#-getting-started)
-- [🌍 Live Demo](#-live-demo)
-- [⚙️ Deployment (GitHub Pages)](#️-deployment-github-pages)
-- [🛠️ Customization](#️-customization)
-- [🧪 Testing Locally](#-testing-locally)
-- [🗺️ Roadmap](#️-roadmap)
-- [🤝 Contributing](#-contributing)
-- [👤 Author & Profile](#-author--profile)
+## Technology
 
----
+- TypeScript and modern browser JavaScript
+- Vite multi-page build
+- Firebase Authentication (Email/Password)
+- Cloud Firestore and Firestore Security Rules
+- Existing HTML/CSS dashboard templates, with custom TypeScript/CSS dashboard views
+- GitHub Pages for the production static frontend; Firebase Hosting for development
 
-## ✨ Features
+## Repository layout
 
-- 📱 **Responsive Layout** — Optimized for desktop, tablet, and mobile
-- 🎨 **Modern UI Components** — Cards, tables, charts, forms, and navigation menus
-- 📊 **Data Visualization** — Interactive charts and graphs
-- ⚡ **Lightweight & Fast** — No heavy frameworks; easy to customize
-- 🗂️ **Pre-built Pages** — Dashboard, Products, Categories, Users, Orders, Reports
-- 🔐 **Clean Codebase** — Organized HTML, CSS, JS, and assets
-
----
-
-## 🧱 Tech Stack
-
-- **HTML5** — Semantic structure
-- **CSS3** — Styling and responsive layout
-- **JavaScript (ES6+)** — Interactivity and charts
-- **Chart.js** — Extendable chart library (plug-and-play via `charts.js`)
-
----
-
-## 📂 Project Structure
-
-```
-Inventory-Management-Admin-Dashboard-Html-Template/
-│
-├── index.html                   # Main dashboard entry
-├── products.html                # Products listing & management
-├── categories.html              # Category views
-├── users.html                   # User management
-├── orders.html                  # Orders overview
-├── reports.html                 # Reports & analytics
-│
-├── assets/
-│   ├── css/
-│   │   ├── style.css            # Global styles
-│   │   └── responsive.css       # Responsive helpers
-│   ├── js/
-│   │   ├── main.js              # Core scripts & UI logic
-│   │   └── charts.js            # Chart configs & sample data
-│   └── images/                  # Logos, icons, placeholders
-│
-├── components/                  # (Optional) Partials / includes
-│   ├── header.html
-│   └── sidebar.html
-│
-├── README.md
+```text
+.
+├── index.html                       # Public entry and authenticated business workspace
+├── signin.html / signup.html        # Authentication entry pages
+├── profile.html                     # Signed-in user's profile
+├── platform-admin.html              # Separate platform-admin dashboard
+├── productlist.html                 # Product listing
+├── addproduct.html                  # Product creation
+├── editproduct.html                 # Product editing
+├── product-details.html             # Product details
+├── inventoryreport.html             # Inventory report
+├── src/
+│   ├── config/firebase.ts           # Environment-checked Firebase initialization
+│   ├── main.ts                      # Business dashboard, Users & Roles, branch UI
+│   ├── platform-admin.ts            # Platform-admin UI
+│   ├── services/                    # Auth, business, inventory, profile, branch services
+│   └── modules/inventory/           # Inventory page behavior and types
+├── firestore.rules                  # Firestore authorization and validation
+├── firebase.json                    # Hosting and Firestore rules configuration
+└── vite.config.ts                   # Multi-page build and deployment base path
 ```
 
-> **Note:** If your repo structure differs, update paths and filenames accordingly.
+The old template files in `assets/` are retained for pages that still use them. This directory is not the canonical source for the new TypeScript business dashboard.
 
----
+## Application pages and template boundary
 
-## 🚀 Getting Started
+`vite.config.ts` explicitly builds these HTML entry points:
 
-### 1) Clone the repository
+| Page | Source | Current purpose |
+| --- | --- | --- |
+| `index.html` | `src/main.ts` | Public home, business setup/selection, business-owner dashboard and branch/member views. |
+| `signin.html`, `signup.html`, `forgetpassword.html` | `src/auth-forms.ts` | Firebase Authentication UI. |
+| `profile.html` | `src/profile.ts` | Current user's profile, verification controls, password reset, and membership summary. |
+| `platform-admin.html` | `src/platform-admin.ts` | Separate platform-admin experience; some sections are demo-only. |
+| `productlist.html`, `addproduct.html`, `editproduct.html`, `product-details.html`, `inventoryreport.html` | `src/modules/inventory/main.ts` | Tenant-scoped product inventory views. |
+| `404.html` | Vite static entry | GitHub Pages tenant-route fallback. |
+
+The repository contains many more HTML files for the original dashboard template (for example POS, sales, purchasing, customers, suppliers, reports, settings, and UI components). They are not listed as Vite build inputs and must not be assumed to be tenant-aware production features simply because the template pages exist. The `firestore.rules` file includes rule coverage for several operational collection paths, but rule coverage alone does not mean a corresponding application workflow is implemented.
+
+## Requirements
+
+- Node.js compatible with the installed Vite version
+- npm
+- Firebase CLI for Firebase Hosting or Firestore rules deployment
+- Firebase web-app configuration for the selected environment
+
+Install dependencies from the repository root:
 
 ```bash
-git clone https://github.com/itrabbi24/Inventory-Management-Admin-Dashboard-Html-Template.git
-cd Inventory-Management-Admin-Dashboard-Html-Template
+npm install
 ```
 
-### 2) Open in a browser
+Create `.env.development` from `.env.development.example` and supply the development Firebase web-app values. For a local production build, create `.env.production` from `.env.production.example`. These files are ignored and must not be committed. `VITE_*` web configuration is public frontend configuration—not a place for service-account keys or other secrets.
 
-Just open `index.html` (or any page) in your browser.
+## Commands
 
----
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start Vite in development mode using `.env.development`. |
+| `npm run build:dev` | Type-check and build for the development environment. |
+| `npm run deploy:dev` | Build and deploy Hosting to the Firebase CLI `development` alias; does not deploy rules. |
+| `npm run build` | Type-check and build the production frontend for GitHub Pages. |
+| `npm run preview` | Preview the production build locally. |
+| `npm run preview:dev` | Preview the development build locally. |
+| `npm run deploy:rules:all` | Deploy Firestore rules to both configured Dev and Production project IDs. Review the rules and intended targets before running. |
 
-## 🌍 Live Demo
+The app and Firebase project are selected by Vite mode and configuration, not the Git branch. `src/config/firebase.ts` rejects a Firebase project ID that does not match the expected environment. Development uses `mandelagenerals-dev`; production uses `mandelageneralshop`. Never test development work against production data.
 
-Hosted on GitHub Pages:
-👉 **[https://onchari.github.io/MandelaGenerals/](https://onchari.github.io/MandelaGenerals/)**
+## Run locally
 
----
+1. Configure `.env.development` with the development Firebase web-app configuration.
+2. Ensure Firebase Authentication Email/Password and Cloud Firestore are enabled for that project.
+3. Run `npm run dev`.
+4. Open the printed local URL. Use a test account and test business.
 
-## ⚙️ Deployment (GitHub Pages)
+New accounts can register and create a business. To try the separately gated platform-admin page, the account must already have a trusted `platformAdmins/{uid}` document in the selected Firebase project. Do not grant this role from client code.
 
-The workflow in `.github/workflows/deploy.yml` builds with the production
-Firebase configuration and deploys the site automatically whenever changes
-are pushed to `main`. Configure the production `VITE_FIREBASE_*` repository
-variables before deploying. If repository settings prevent automatic
-enablement, set the build and deployment source to **GitHub Actions** in
-**Repository → Settings → Pages**.
-The site will be published at:
+## Environments and deployment
 
-```
-https://onchari.github.io/MandelaGenerals/
-```
+- Development Firebase project: `mandelagenerals-dev`
+- Production Firebase project: `mandelageneralshop`
+- Development Hosting: `https://mandelagenerals-dev.web.app`
+- Production GitHub Pages: `https://onchari.github.io/MandelaGenerals/`
 
----
+Production builds are intended for GitHub Actions/GitHub Pages. Configure the repository's production `VITE_FIREBASE_*` variables in GitHub Actions. Tenant workspaces use path-based URLs (`/b/{slug}/`); GitHub Pages does not provide wildcard subdomains for this project site.
 
-## 🛠️ Customization
+Firestore rules are separate from frontend hosting deployments. Publishing `firestore.rules` replaces the active rules for the targeted Firebase project. Back up and review the active rules, validate against the intended environment, and deploy Dev before Production. Deployment history is not evidence of current live rules; check the Firebase project directly.
 
-- 🎨 **Theme & Styles:** Edit `assets/css/style.css` (colors, spacing, typography)
-- 🧩 **Layout Components:** Reuse/modify `components/header.html` and `components/sidebar.html`
-- 📊 **Charts:** Update datasets and options in `assets/js/charts.js`
-- ♿ **Accessibility:** Add ARIA attributes and ensure proper contrast/keyboard nav
-- 🌐 **Localization:** Externalize strings to easily support multiple languages
+## Current limitations
 
----
+- Branch-scoped product quantities exist for isolated-mode businesses, but there is no stock ledger, stock transfer, or branch-level inventory report.
+- A business owner can add an existing account from an email dropdown after the account holder opts into discovery in Profile, assign a supported business role, and assign branches later. The flow does not create Auth accounts or send invitation/account email. The profile email directory is visible to signed-in Mandela accounts and capped at 100 results per query.
+- Branch management creates and edits branches, assigns access to existing business members, and supports an owner-only branch-manager designation. It does not send invitations or change the owner's role.
+- Existing businesses require explicit branch initialization. Existing product, sales, or movement records are not migrated automatically.
+- Current membership roles are fixed to the implemented role set. The proposed detailed RBAC matrix is design guidance and does not enforce custom permissions.
+- POS, purchasing, returns/refunds, subscriptions/billing, and immutable audit logging are incomplete or unavailable.
+- Many legacy root HTML pages remain template/sample pages and are not part of the configured Vite multi-page build.
+- The platform-admin dashboard contains both live read-only directories and demo/session-only sections. See its guide.
+- There is no automated test script configured in `package.json`. The production build runs TypeScript checking before Vite.
 
-## 🧪 Testing Locally
+## Development documentation practice
 
-### Development and production environments
+When a feature changes, inspect the current source, rules, configuration, and relevant tests before editing documentation. Update this README when setup, commands, or product scope change; update the implementation, architecture, database, security, and status guides when their subject changes. Record tests actually run and their actual results. Do not claim a rule set is secure, deployed, or tested against Firebase without corresponding evidence.
 
-The app uses two Firebase projects and separate URLs. Development is hosted by
-Firebase Hosting for `mandelagenerals-dev` at
-`https://mandelagenerals-dev.web.app`. Production is hosted on GitHub Pages at
-`https://onchari.github.io/MandelaGenerals/` and connects only to
-`mandelageneralshop`. There is no in-app environment switch; use the Dev URL
-for testing and the production URL for live data.
+## Project references
 
-Create `.env.development` from `.env.development.example` and put the Dev
-Firebase web app configuration there. For local production builds, create
-`.env.production` from `.env.production.example` and put the Production config
-there. These files are ignored by Git. The build checks that its Firebase
-project ID matches the selected Vite mode.
-
-```bash
-npm run dev          # Local development app; uses .env.development
-npm run build:dev    # Build the Dev app
-npm run deploy:dev   # Deploy only the Dev app to Firebase Hosting
-npm run build        # Production build for GitHub Pages
-```
-
-The Dev deploy script uses the `development` Firebase CLI alias and deploys
-Hosting only; it does not update Firestore rules. To deploy Dev manually:
-
-1. Install the Firebase CLI if needed: `npm install --global firebase-tools`.
-2. Sign in once on this computer: `firebase login`.
-3. Run `npm run deploy:dev`.
-
-This builds the Dev app and deploys only Hosting to `mandelagenerals-dev`.
-Production deploys separately to GitHub Pages through GitHub Actions when
-changes are pushed to `main`. Review and merge tested code to `main` to promote
-the app; neither deployment copies Firestore data or deploys Firestore rules.
-Users can create accounts and businesses in either environment. Dev and
-Production accounts, businesses, and data remain separate because each app
-connects to its own Firebase project.
-
-The Git branch does not select the Firebase project. `npm run dev` always
-starts Vite in development mode and uses `.env.development`, so you can test
-locally on either branch without connecting to Production. When changes are
-ready, push or merge them to `main`; the GitHub Actions workflow builds in
-production mode with the Production Firebase variables. Do not put Production
-credentials in `.env.development`.
-
-Enable Email/Password sign-in in Firebase Authentication in both projects.
-Any authenticated user can create an account and their own business in that
-Firebase project. Business data remains restricted by membership rules.
-Deploy the same Firestore rules to both projects; accounts and business data
-remain separate because the projects are separate.
-The Profile page reads the email address from Firebase Authentication and
-stores the editable display name and optional phone number on the user's
-`users/{uid}` document. It also shows email verification, sends verification
-and password-reset emails, and lists the user's business memberships. Deploy
-the updated `firestore.rules` to each project before using profile edits there.
-After signing in with the Firebase CLI, deploy Firestore rules to Dev and
-Production with one command:
-
-```bash
-npm run deploy:rules:all
-```
-
-Firebase web-app configuration is included in the public frontend bundle, so
-protect data with Authentication and Firestore rules, and never put
-service-account private keys in `VITE_*` variables. Do not use production data
-to test development features.
-
-- Validate HTML with the W3C validator
-- Use browser dev tools Lighthouse for performance & accessibility checks
-- Test responsiveness at common breakpoints (1440, 1280, 1024, 768, 576, 375)
-
----
-
-## 🗺️ Roadmap
-
-- [ ] Dark mode & theming support
-- [ ] Search, filter, and sort for tables
-- [ ] Modal & toast components
-- [ ] Reusable form elements (validation states)
-- [ ] Example API integration (mock data)
-
-*Suggestions welcome — open an issue!*
-
----
-
-## 🤝 Contributing
-
-Contributions are appreciated!
-
-1. **Fork** the repository
-2. Create your feature branch: `git checkout -b feat/awesome-feature`
-3. **Commit** changes: `git commit -m "feat: add awesome feature"`
-4. **Push** to the branch: `git push origin feat/awesome-feature`
-5. Open a **Pull Request**
-
----
-
-## 👤 Author & Profile
-
-**ARG Rabbi** — Web Developer focusing on clean dashboards and UI systems.
-
-- GitHub: **[@itrabbi24](https://github.com/itrabbi24)**
-
-If this template helps you, please **⭐ star the repo** and **follow** for updates!
-
----
+- Repository: [onchari/MandelaGenerals](https://github.com/onchari/MandelaGenerals)
+- Production site: [Mandela Generals](https://onchari.github.io/MandelaGenerals/)

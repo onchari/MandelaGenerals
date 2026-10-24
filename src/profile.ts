@@ -5,6 +5,7 @@ import { getUserBusinesses } from './services/business.service';
 import {
   getUserProfile,
   saveUserProfile,
+  setBusinessAccountDiscoverability,
   type UserProfile,
 } from './services/profile.service';
 
@@ -33,6 +34,9 @@ const refreshVerificationButton = requireElement<HTMLButtonElement>('#profile-ve
 const passwordResetButton = requireElement<HTMLButtonElement>('#profile-password-reset');
 const businessesSection = requireElement<HTMLElement>('#profile-businesses');
 const businessList = requireElement<HTMLUListElement>('#profile-business-list');
+const discoverabilitySection = requireElement<HTMLElement>('#profile-discoverability-section');
+const discoverabilityToggle = requireElement<HTMLInputElement>('#profile-business-discoverable');
+const discoverabilityMessage = requireElement<HTMLElement>('#profile-discoverability-message');
 let currentUser: User | null = null;
 let savedProfile: UserProfile | null = null;
 
@@ -56,8 +60,10 @@ function displayProfile(profile: UserProfile, user: User): void {
   verificationStatus.textContent = user.emailVerified ? 'Verified' : 'Not verified';
   verificationStatus.classList.toggle('text-success', user.emailVerified);
   verificationStatus.classList.toggle('text-danger', !user.emailVerified);
+  discoverabilityToggle.checked = profile.discoverableByBusinessOwners;
   sendVerificationButton.hidden = user.emailVerified;
   form.hidden = false;
+  discoverabilitySection.hidden = false;
   securitySection.hidden = false;
 }
 
@@ -92,6 +98,7 @@ async function loadBusinesses(user: User): Promise<void> {
 async function loadProfile(user: User): Promise<void> {
   currentUser = user;
   form.hidden = true;
+  discoverabilitySection.hidden = true;
   securitySection.hidden = true;
   businessesSection.hidden = true;
   showNotice('Loading your profile...');
@@ -123,6 +130,34 @@ form.addEventListener('submit', async (event) => {
     showNotice(error instanceof Error ? error.message : 'Unable to save your profile.', true);
   } finally {
     saveButton.disabled = false;
+  }
+});
+
+discoverabilityToggle.addEventListener('change', async () => {
+  if (!currentUser || !savedProfile) return;
+  const requestedValue = discoverabilityToggle.checked;
+  discoverabilityToggle.disabled = true;
+  discoverabilityMessage.hidden = false;
+  discoverabilityMessage.textContent = requestedValue
+    ? 'Enabling account discovery...'
+    : 'Removing your account from the user picker...';
+  try {
+    await setBusinessAccountDiscoverability(currentUser, savedProfile.displayName, requestedValue);
+    savedProfile = { ...savedProfile, discoverableByBusinessOwners: requestedValue };
+    discoverabilityMessage.textContent = requestedValue
+      ? 'Your email is now discoverable to signed-in Mandela accounts.'
+      : 'Your email has been removed from the business user picker.';
+    discoverabilityMessage.classList.remove('text-danger');
+    discoverabilityMessage.classList.add('text-success');
+  } catch (error) {
+    discoverabilityToggle.checked = !requestedValue;
+    discoverabilityMessage.textContent = error instanceof Error
+      ? error.message
+      : 'Could not update account discovery.';
+    discoverabilityMessage.classList.remove('text-success');
+    discoverabilityMessage.classList.add('text-danger');
+  } finally {
+    discoverabilityToggle.disabled = false;
   }
 });
 

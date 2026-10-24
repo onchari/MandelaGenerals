@@ -1,6 +1,7 @@
 import { updateProfile, type User } from 'firebase/auth';
 import {
   Timestamp,
+  deleteDoc,
   deleteField,
   doc,
   getDoc,
@@ -9,12 +10,14 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import { assertFirebaseReady, db } from '../config/firebase';
+import { defaultUserAccessMetadata } from '../types/user';
 
 export interface UserProfile {
   displayName: string;
   email: string;
   phoneNumber: string;
   createdAt: Date | null;
+  discoverableByBusinessOwners: boolean;
 }
 
 function getProfileReference(userId: string) {
@@ -25,8 +28,17 @@ function getProfileReference(userId: string) {
   return doc(db, 'users', userId);
 }
 
+function getBusinessDirectoryReference(userId: string) {
+  assertFirebaseReady();
+  if (!db) {
+    throw new Error('Firebase is not configured.');
+  }
+  return doc(db, 'businessUserDirectory', userId);
+}
+
 export async function getUserProfile(user: User): Promise<UserProfile> {
   const profileSnapshot = await getDoc(getProfileReference(user.uid));
+  const directorySnapshot = await getDoc(getBusinessDirectoryReference(user.uid));
   const data = profileSnapshot.data();
 
   if (data && data.displayName !== undefined && typeof data.displayName !== 'string') {
@@ -44,6 +56,7 @@ export async function getUserProfile(user: User): Promise<UserProfile> {
     email: user.email || '',
     phoneNumber: data?.phoneNumber || '',
     createdAt: data?.createdAt instanceof Timestamp ? data.createdAt.toDate() : null,
+    discoverableByBusinessOwners: directorySnapshot.data()?.discoverable === true,
   };
 }
 
@@ -82,6 +95,7 @@ export async function saveUserProfile(user: User, displayName: string, phoneNumb
       displayName: normalizedName,
       email: user.email,
       createdAt: serverTimestamp(),
+      ...defaultUserAccessMetadata,
       ...(normalizedPhone ? { phoneNumber: normalizedPhone } : {}),
     });
   }
@@ -107,4 +121,41 @@ export async function saveUserProfile(user: User, displayName: string, phoneNumb
       { cause: error },
     );
   }
+  if (profileSnapshot.exists()) {
+    const directoryReference = getBusinessDirectoryReference(user.uid);
+    const directorySnapshot = await getDoc(directoryReference);
+    if (directorySnapshot.exists() && directorySnapshot.data().discoverable === true) {
+      await updateDoc(directoryReference, {
+        displayName: normalizedName,
+        email: user.email?.trim() ?? '',
+        updatedAt: serverTimestamp(),
+      });
+    }
+  }
+}
+
+export async function setBusinessAccountDiscoverability(
+  user: User,
+  displayName: string,
+  discoverable: boolean,
+): Promise<void> {
+  if (typeof discoverable !== 'boolean') {
+    throw new Error('Account discoverability must be enabled or disabled.');
+  }
+  const directoryReference = getBusinessDirectoryReference(user.uid);
+  if (!discoverable) {
+    await deleteDoc(directoryReference);
+    return;
+  }
+  const email = user.email?.trim();
+  const normalizedName = displayName.trim();
+  if (!email || !normalizedName) {
+    throw new Error('Add an account email and display name before enabling account discoverability.');
+  }
+  await setDoc(directoryReference, {
+    email,
+    displayName: normalizedName,
+    discoverable: true,
+    updatedAt: serverTimestamp(),
+  });
 }

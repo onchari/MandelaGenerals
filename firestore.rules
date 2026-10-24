@@ -24,6 +24,28 @@ service cloud.firestore {
       return /databases/$(database)/documents/users/$(uid)/businessMemberships/$(businessId);
     }
 
+    function branchPath(businessId, branchId) {
+      return /databases/$(database)/documents/businesses/$(businessId)/branches/$(branchId);
+    }
+
+    function businessPath(businessId) {
+      return /databases/$(database)/documents/businesses/$(businessId);
+    }
+
+    function allowsLegacyProducts(businessId) {
+      return exists(businessPath(businessId))
+        && get(businessPath(businessId)).data.get('branchWorkspaceMode', '') != 'isolated';
+    }
+
+    function userPath(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function hasActiveUserProfile(uid) {
+      return exists(userPath(uid))
+        && get(userPath(uid)).data.get('accountStatus', 'active') == 'active';
+    }
+
     function isMember(businessId) {
       return signedIn()
         && exists(memberPath(businessId))
@@ -43,6 +65,40 @@ service cloud.firestore {
 
     function isOwner(businessId) {
       return hasRole(businessId, ['owner']);
+    }
+
+    function isAssignedToBranch(businessId, branchId) {
+      return isMember(businessId)
+        && (
+          get(memberPath(businessId)).data.get('allBranches', false) == true
+          || (
+            get(memberPath(businessId)).data.get('branchIds', []) is list
+            && get(memberPath(businessId)).data.get('branchIds', []).hasAny([branchId])
+          )
+        )
+        && exists(branchPath(businessId, branchId))
+        && get(branchPath(businessId, branchId)).data.status == 'active';
+    }
+
+    function canAccessBranch(businessId, branchId) {
+      return isOwner(businessId) || isAssignedToBranch(businessId, branchId);
+    }
+
+    function canUseBranch(businessId, branchId) {
+      return exists(branchPath(businessId, branchId))
+        && get(branchPath(businessId, branchId)).data.status == 'active'
+        && canAccessBranch(businessId, branchId);
+    }
+
+    function canReadBranchRecord(businessId, data) {
+      return !('branchId' in data)
+        || (data.branchId is string && canAccessBranch(businessId, data.branchId));
+    }
+
+    function validBranchScope(businessId, data) {
+      return ('branchId' in data)
+        ? (data.branchId is string && canUseBranch(businessId, data.branchId))
+        : !get(businessPath(businessId)).data.keys().hasAny(['primaryBranchId']);
     }
 
     function isManager(businessId) {
@@ -134,18 +190,87 @@ service cloud.firestore {
         && product.costPrice <= 9007199254740991
         && product.sellingPrice is int
         && product.sellingPrice >= 0
-        && product.sellingPrice <= 9007199254740991
-        && product.createdAt is timestamp;
+        && product.sellingPrice <= 9007199254740991;
+    }
+
+    function validBranch() {
+      let branch = request.resource.data;
+      return branch.keys().hasAll(['name', 'status', 'createdAt', 'isPrimary'])
+        && branch.keys().hasOnly(['name', 'address', 'status', 'createdAt', 'isPrimary', 'managerUid'])
+        && branch.name is string
+        && branch.name.size() > 0
+        && branch.name.size() <= 100
+        && (!('address' in branch)
+          || (branch.address is string && branch.address.size() <= 300))
+        && (!('managerUid' in branch) || branch.managerUid is string)
+        && branch.status in ['active', 'inactive']
+        && branch.createdAt is timestamp
+        && branch.isPrimary is bool;
+    }
+
+    function validBranchWorkspace(businessId, branchId) {
+      let workspace = request.resource.data;
+      return workspace.keys().hasAll(['parentBusinessId', 'branchId', 'inventoryMode', 'createdAt'])
+        && workspace.keys().hasOnly(['parentBusinessId', 'branchId', 'inventoryMode', 'createdAt'])
+        && workspace.parentBusinessId == businessId
+        && workspace.branchId == branchId
+        && workspace.inventoryMode == 'branch_scoped'
+        && workspace.createdAt is timestamp;
+    }
+
+    function validBranchAssignments(data) {
+      return (!('branchIds' in data) || data.branchIds is list)
+        && (!('allBranches' in data) || data.allBranches is bool);
+    }
+
+    function validNewMemberBranchAssignments(data) {
+      return data.branchIds is list
+        && data.branchIds.size() == 0
+        && data.allBranches == false;
+    }
+
+    function validBusinessRole(role) {
+      return role in ['admin', 'manager', 'cashier', 'staff'];
+    }
+
+    function validBranchMemberBootstrap(businessId, data) {
+      return validBranchAssignments(data)
+        && (!('branchIds' in data)
+          || (data.branchIds.size() == 1 && data.branchIds.hasAny(['main'])
+            && existsAfter(branchPath(businessId, 'main'))));
+    }
+
+    function validDemoBranchAssignments(businessId, data) {
+      return validBranchAssignments(data)
+        && (!('branchIds' in data)
+          || (data.branchIds.size() == 1 && data.branchIds.hasAny(['main'])
+            && existsAfter(branchPath(businessId, 'main'))))
+        && (!('allBranches' in data) || data.allBranches == false);
     }
 
     match /users/{uid} {
       allow read: if (signedIn() && request.auth.uid == uid) || isPlatformAdmin();
       allow create: if signedIn()
         && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['displayName', 'email', 'createdAt', 'phoneNumber'])
-        && request.resource.data.keys().hasAll(['displayName', 'email', 'createdAt'])
+        && request.resource.data.keys().hasOnly([
+          'displayName', 'email', 'createdAt', 'phoneNumber',
+          'accountStatus', 'invitationStatus', 'emailVerificationStatus',
+          'invitedAt', 'invitedBy', 'invitationExpiresAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'displayName', 'email', 'createdAt',
+          'accountStatus', 'invitationStatus', 'emailVerificationStatus',
+          'invitedAt', 'invitedBy', 'invitationExpiresAt'
+        ])
         && request.resource.data.displayName is string
         && request.resource.data.email is string
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.accountStatus == 'active'
+        && request.resource.data.invitationStatus == 'not_invited'
+        && request.resource.data.emailVerificationStatus == 'not_required'
+        && request.resource.data.invitedAt == null
+        && request.resource.data.invitedBy == null
+        && request.resource.data.invitationExpiresAt == null
         && (!('phoneNumber' in request.resource.data)
           || (request.resource.data.phoneNumber is string
             && request.resource.data.phoneNumber.size() <= 32));
@@ -164,7 +289,7 @@ service cloud.firestore {
             signedIn()
             && request.auth.uid == uid
             && request.resource.data.keys().hasAll(['businessName', 'role', 'active', 'joinedAt'])
-            && request.resource.data.keys().hasOnly(['businessName', 'slug', 'role', 'active', 'joinedAt'])
+            && request.resource.data.keys().hasOnly(['businessName', 'slug', 'role', 'active', 'joinedAt', 'branchIds', 'allBranches', 'branchWorkspaceMode'])
             && request.resource.data.businessName is string
             && request.resource.data.businessName.size() > 0
             && request.resource.data.businessName.size() <= 100
@@ -174,32 +299,88 @@ service cloud.firestore {
             && request.resource.data.role == 'owner'
             && request.resource.data.active == true
             && request.resource.data.joinedAt is timestamp
+            && (!('branchWorkspaceMode' in request.resource.data)
+              || (request.resource.data.branchWorkspaceMode == 'isolated'
+                && getAfter(businessPath(businessId)).data.branchWorkspaceMode == 'isolated'))
             && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
             && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.slug == request.resource.data.slug
             && getAfter(/databases/$(database)/documents/businesses/$(businessId)/members/$(uid)).data.role == 'owner'
             && getAfter(/databases/$(database)/documents/businesses/$(businessId)/members/$(uid)).data.active == true
+            && validBranchMemberBootstrap(businessId, request.resource.data)
+            && (!('branchIds' in request.resource.data)
+              || getAfter(memberPath(businessId)).data.branchIds == request.resource.data.branchIds)
+            && (!('allBranches' in request.resource.data)
+              || getAfter(memberPath(businessId)).data.allBranches == request.resource.data.allBranches)
           )
           || (
             isPlatformAdmin()
             && isDemoTenant(businessId)
             && request.resource.data.keys().hasAll(['businessName', 'slug', 'role', 'active', 'joinedAt'])
-            && request.resource.data.keys().hasOnly(['businessName', 'slug', 'role', 'active', 'joinedAt'])
+            && request.resource.data.keys().hasOnly(['businessName', 'slug', 'role', 'active', 'joinedAt', 'branchIds', 'allBranches', 'branchWorkspaceMode'])
             && request.resource.data.businessName == 'Demo'
             && request.resource.data.slug == 'demo'
             && request.resource.data.role == 'staff'
             && request.resource.data.active == true
             && request.resource.data.joinedAt is timestamp
+            && (!('branchWorkspaceMode' in request.resource.data)
+              || (request.resource.data.branchWorkspaceMode == 'isolated'
+                && get(businessPath(businessId)).data.branchWorkspaceMode == 'isolated'))
+            && validDemoBranchAssignments(businessId, request.resource.data)
+            && (!('branchIds' in request.resource.data)
+              || getAfter(/databases/$(database)/documents/businesses/$(businessId)/members/$(uid)).data.branchIds == request.resource.data.branchIds)
+            && (!('allBranches' in request.resource.data)
+              || getAfter(/databases/$(database)/documents/businesses/$(businessId)/members/$(uid)).data.allBranches == request.resource.data.allBranches)
+          )
+          || (
+            isOwner(businessId)
+            && uid != request.auth.uid
+            && hasActiveUserProfile(uid)
+            && exists(/databases/$(database)/documents/businessUserDirectory/$(uid))
+            && get(/databases/$(database)/documents/businessUserDirectory/$(uid)).data.discoverable == true
+            && request.resource.data.keys().hasAll(['businessName', 'role', 'active', 'joinedAt', 'branchIds', 'allBranches'])
+            && request.resource.data.keys().hasOnly(['businessName', 'slug', 'role', 'active', 'joinedAt', 'branchIds', 'allBranches', 'branchWorkspaceMode'])
+            && request.resource.data.businessName == get(businessPath(businessId)).data.name
+            && (!('slug' in request.resource.data)
+              || request.resource.data.slug == get(businessPath(businessId)).data.get('slug', ''))
+            && validBusinessRole(request.resource.data.role)
+            && request.resource.data.active == true
+            && request.resource.data.joinedAt is timestamp
+            && (!('branchWorkspaceMode' in request.resource.data)
+              || (request.resource.data.branchWorkspaceMode == 'isolated'
+                && get(businessPath(businessId)).data.branchWorkspaceMode == 'isolated'))
+            && validNewMemberBranchAssignments(request.resource.data)
+            && getAfter(/databases/$(database)/documents/businesses/$(businessId)/members/$(uid)).data.role == request.resource.data.role
+            && getAfter(/databases/$(database)/documents/businesses/$(businessId)/members/$(uid)).data.active == true
+            && getAfter(/databases/$(database)/documents/businesses/$(businessId)/members/$(uid)).data.branchIds == request.resource.data.branchIds
+            && getAfter(/databases/$(database)/documents/businesses/$(businessId)/members/$(uid)).data.allBranches == request.resource.data.allBranches
+            && getAfter(/databases/$(database)/documents/businesses/$(businessId)/members/$(uid)).data.joinedAt == request.resource.data.joinedAt
           );
-        allow update: if signedIn()
-          && request.auth.uid == uid
-          && isOwner(businessId)
-          && resource.data.role == 'owner'
-          && resource.data.active == true
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slug'])
-          && request.resource.data.slug is string
-          && request.resource.data.slug.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
-          && request.resource.data.slug.size() <= 48
-          && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.slug == request.resource.data.slug;
+        allow update: if (
+            signedIn()
+            && request.auth.uid == uid
+            && isOwner(businessId)
+            && resource.data.role == 'owner'
+            && resource.data.active == true
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slug'])
+            && request.resource.data.slug is string
+            && request.resource.data.slug.matches('^[a-z0-9]+(-[a-z0-9]+)*$')
+            && request.resource.data.slug.size() <= 48
+            && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.slug == request.resource.data.slug
+          )
+          || (
+            isOwner(businessId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['branchIds', 'allBranches'])
+            && validBranchAssignments(request.resource.data)
+            && getAfter(memberPath(businessId)).data.branchIds == request.resource.data.branchIds
+            && getAfter(memberPath(businessId)).data.allBranches == request.resource.data.allBranches
+          )
+          || (
+            isOwner(businessId)
+            && resource.data.role != 'owner'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
+            && validBusinessRole(request.resource.data.role)
+            && getAfter(memberPath(businessId)).data.role == request.resource.data.role
+          );
         allow delete: if false;
       }
     }
@@ -207,6 +388,25 @@ service cloud.firestore {
     match /platformAdmins/{uid} {
       allow get: if request.auth != null && request.auth.uid == uid;
       allow list, create, update, delete: if false;
+    }
+
+    match /businessUserDirectory/{uid} {
+      allow get: if signedIn()
+        && (request.auth.uid == uid || resource.data.discoverable == true);
+      allow list: if signedIn()
+        && request.query.limit != null
+        && request.query.limit <= 100
+        && resource.data.discoverable == true;
+      allow create, update: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasAll(['email', 'displayName', 'discoverable', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['email', 'displayName', 'discoverable', 'updatedAt'])
+        && request.resource.data.email is string
+        && request.resource.data.email == get(userPath(uid)).data.email
+        && request.resource.data.displayName is string
+        && request.resource.data.discoverable is bool
+        && request.resource.data.updatedAt is timestamp;
+      allow delete: if signedIn() && request.auth.uid == uid;
     }
 
     match /environmentConfig/{configId} {
@@ -236,8 +436,12 @@ service cloud.firestore {
     match /businesses/{businessId} {
       allow read: if isMember(businessId) || isPlatformAdmin();
       allow create: if signedIn()
-        && request.resource.data.keys().hasAll(['name', 'slug', 'ownerId', 'createdAt'])
-        && request.resource.data.keys().hasOnly(['name', 'slug', 'ownerId', 'createdAt'])
+        && request.resource.data.keys().hasAll([
+          'name', 'slug', 'ownerId', 'createdAt', 'primaryBranchId', 'branchWorkspaceMode'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'name', 'slug', 'ownerId', 'createdAt', 'primaryBranchId', 'branchWorkspaceMode'
+        ])
         && request.resource.data.name is string
         && request.resource.data.name.size() > 0
         && request.resource.data.name.size() <= 100
@@ -246,6 +450,10 @@ service cloud.firestore {
         && request.resource.data.slug.size() <= 48
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.createdAt is timestamp
+        && request.resource.data.branchWorkspaceMode == 'isolated'
+        && request.resource.data.primaryBranchId == 'main'
+        && getAfter(branchPath(businessId, request.resource.data.primaryBranchId)).data.isPrimary == true
+        && getAfter(branchPath(businessId, request.resource.data.primaryBranchId)).data.status == 'active'
         && getAfter(/databases/$(database)/documents/businessSlugs/$(request.resource.data.slug)).data.businessId == businessId
         && getAfter(memberPath(businessId)).data.role == 'owner'
         && getAfter(memberPath(businessId)).data.active == true
@@ -269,6 +477,17 @@ service cloud.firestore {
             && getAfter(/databases/$(database)/documents/businessSlugs/$(request.resource.data.slug)).data.businessId == businessId
             && getAfter(membershipIndexPath(request.auth.uid, businessId)).data.slug == request.resource.data.slug
           )
+          || (
+            !resource.data.keys().hasAny(['primaryBranchId'])
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['primaryBranchId'])
+            && request.resource.data.primaryBranchId == 'main'
+            && getAfter(branchPath(businessId, 'main')).data.isPrimary == true
+            && getAfter(branchPath(businessId, 'main')).data.status == 'active'
+            && getAfter(memberPath(businessId)).data.branchIds == ['main']
+            && getAfter(memberPath(businessId)).data.allBranches == true
+            && getAfter(membershipIndexPath(request.auth.uid, businessId)).data.branchIds == ['main']
+            && getAfter(membershipIndexPath(request.auth.uid, businessId)).data.allBranches == true
+          )
         );
       allow delete: if false;
 
@@ -278,33 +497,148 @@ service cloud.firestore {
             signedIn()
             && uid == request.auth.uid
             && request.resource.data.keys().hasAll(['role', 'active', 'joinedAt'])
-            && request.resource.data.keys().hasOnly(['role', 'active', 'joinedAt'])
+            && request.resource.data.keys().hasOnly(['role', 'active', 'joinedAt', 'branchIds', 'allBranches'])
             && request.resource.data.role == 'owner'
             && request.resource.data.active == true
             && request.resource.data.joinedAt is timestamp
+            && validBranchMemberBootstrap(businessId, request.resource.data)
             && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
             && getAfter(membershipIndexPath(request.auth.uid, businessId)).data.role == 'owner'
             && getAfter(membershipIndexPath(request.auth.uid, businessId)).data.active == true
+            && (!('branchIds' in request.resource.data)
+              || getAfter(membershipIndexPath(request.auth.uid, businessId)).data.branchIds == request.resource.data.branchIds)
+            && (!('allBranches' in request.resource.data)
+              || getAfter(membershipIndexPath(request.auth.uid, businessId)).data.allBranches == request.resource.data.allBranches)
           )
           || (
             isPlatformAdmin()
             && isDemoTenant(businessId)
             && request.resource.data.keys().hasAll(['role', 'active', 'joinedAt'])
-            && request.resource.data.keys().hasOnly(['role', 'active', 'joinedAt'])
+            && request.resource.data.keys().hasOnly(['role', 'active', 'joinedAt', 'branchIds', 'allBranches'])
             && request.resource.data.role == 'staff'
             && request.resource.data.active == true
             && request.resource.data.joinedAt is timestamp
+            && validDemoBranchAssignments(businessId, request.resource.data)
+            && (!('branchIds' in request.resource.data)
+              || getAfter(/databases/$(database)/documents/users/$(uid)/businessMemberships/$(businessId)).data.branchIds == request.resource.data.branchIds)
+            && (!('allBranches' in request.resource.data)
+              || getAfter(/databases/$(database)/documents/users/$(uid)/businessMemberships/$(businessId)).data.allBranches == request.resource.data.allBranches)
+          )
+          || (
+            isOwner(businessId)
+            && uid != request.auth.uid
+            && hasActiveUserProfile(uid)
+            && exists(/databases/$(database)/documents/businessUserDirectory/$(uid))
+            && get(/databases/$(database)/documents/businessUserDirectory/$(uid)).data.discoverable == true
+            && request.resource.data.keys().hasAll(['role', 'active', 'joinedAt', 'branchIds', 'allBranches'])
+            && request.resource.data.keys().hasOnly(['role', 'active', 'joinedAt', 'branchIds', 'allBranches'])
+            && validBusinessRole(request.resource.data.role)
+            && request.resource.data.active == true
+            && request.resource.data.joinedAt is timestamp
+            && validNewMemberBranchAssignments(request.resource.data)
+            && getAfter(/databases/$(database)/documents/users/$(uid)/businessMemberships/$(businessId)).data.role == request.resource.data.role
+            && getAfter(/databases/$(database)/documents/users/$(uid)/businessMemberships/$(businessId)).data.active == true
+            && getAfter(/databases/$(database)/documents/users/$(uid)/businessMemberships/$(businessId)).data.branchIds == request.resource.data.branchIds
+            && getAfter(/databases/$(database)/documents/users/$(uid)/businessMemberships/$(businessId)).data.allBranches == request.resource.data.allBranches
+            && getAfter(/databases/$(database)/documents/users/$(uid)/businessMemberships/$(businessId)).data.joinedAt == request.resource.data.joinedAt
           );
-        allow update, delete: if false;
+        allow update: if isOwner(businessId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['branchIds', 'allBranches'])
+          && validBranchAssignments(request.resource.data)
+          && getAfter(membershipIndexPath(uid, businessId)).data.branchIds == request.resource.data.branchIds
+          && getAfter(membershipIndexPath(uid, businessId)).data.allBranches == request.resource.data.allBranches
+          || (
+            isOwner(businessId)
+            && resource.data.role != 'owner'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role'])
+            && validBusinessRole(request.resource.data.role)
+            && getAfter(membershipIndexPath(uid, businessId)).data.role == request.resource.data.role
+          );
+        allow delete: if false;
+      }
+
+      match /branches/{branchId} {
+        allow read: if canAccessBranch(businessId, branchId);
+        allow create: if getAfter(businessPath(businessId)).data.keys().hasAny(['primaryBranchId'])
+          && validBranch()
+          && (!('managerUid' in request.resource.data) || request.resource.data.managerUid == '')
+          && request.resource.data.isPrimary ==
+            (getAfter(businessPath(businessId)).data.get('primaryBranchId', '') == branchId)
+          && getAfter(/databases/$(database)/documents/businesses/$(businessId)/branches/$(branchId)/settings/workspace).data.parentBusinessId == businessId
+          && getAfter(/databases/$(database)/documents/businesses/$(businessId)/branches/$(branchId)/settings/workspace).data.branchId == branchId
+          && getAfter(/databases/$(database)/documents/businesses/$(businessId)/branches/$(branchId)/settings/workspace).data.inventoryMode == 'branch_scoped'
+          && (
+            isOwner(businessId)
+            || (
+              signedIn()
+              && getAfter(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid
+              && getAfter(memberPath(businessId)).data.role == 'owner'
+              && getAfter(memberPath(businessId)).data.active == true
+            )
+          );
+        allow update: if isOwner(businessId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'address', 'status', 'managerUid'])
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 100
+          && (!('address' in request.resource.data)
+            || (request.resource.data.address is string
+              && request.resource.data.address.size() <= 300))
+          && request.resource.data.status in ['active', 'inactive']
+          && (
+            !('managerUid' in request.resource.data)
+            || (
+              request.resource.data.managerUid is string
+              && (
+                request.resource.data.managerUid == ''
+                || request.resource.data.managerUid == request.auth.uid
+              )
+            )
+          )
+          && (
+            request.resource.data.status != 'inactive'
+            || get(businessPath(businessId)).data.get('primaryBranchId', '') != branchId
+          );
+        allow delete: if false;
+
+        match /settings/{settingId} {
+          allow read: if settingId == 'workspace' && canAccessBranch(businessId, branchId);
+          allow create: if settingId == 'workspace'
+            && validBranchWorkspace(businessId, branchId)
+            && getAfter(branchPath(businessId, branchId)).data.status == 'active'
+            && (
+              isOwner(businessId)
+              || (
+                signedIn()
+                && getAfter(businessPath(businessId)).data.ownerId == request.auth.uid
+                && getAfter(memberPath(businessId)).data.role == 'owner'
+                && getAfter(memberPath(businessId)).data.active == true
+              )
+            );
+          allow update, delete: if false;
+        }
+
+        match /products/{productId} {
+          allow read: if canAccessBranch(businessId, branchId);
+          allow create: if canUseBranch(businessId, branchId)
+            && isManager(businessId)
+            && validProduct();
+          allow update: if canUseBranch(businessId, branchId)
+            && isManager(businessId)
+            && validProduct()
+            && request.resource.data.createdAt == resource.data.createdAt;
+          allow delete: if canUseBranch(businessId, branchId) && isManager(businessId);
+        }
       }
 
       match /products/{productId} {
-        allow read: if isMember(businessId);
-        allow create: if isManager(businessId) && validProduct();
-        allow update: if isManager(businessId)
+        allow read: if allowsLegacyProducts(businessId) && isMember(businessId);
+        allow create: if allowsLegacyProducts(businessId) && isManager(businessId) && validProduct();
+        allow update: if allowsLegacyProducts(businessId)
+          && isManager(businessId)
           && validProduct()
           && request.resource.data.createdAt == resource.data.createdAt;
-        allow delete: if isManager(businessId);
+        allow delete: if allowsLegacyProducts(businessId) && isManager(businessId);
       }
 
       match /invites/{inviteId} {
@@ -329,20 +663,26 @@ service cloud.firestore {
       }
 
       match /stock_moves/{moveId} {
-        allow read: if isMember(businessId);
+        allow read: if isMember(businessId)
+          && canReadBranchRecord(businessId, resource.data);
         allow create: if canSell(businessId)
           && request.resource.data.delta is int
-          && request.resource.data.itemId is string;
+          && request.resource.data.itemId is string
+          && validBranchScope(businessId, request.resource.data);
         allow update, delete: if false;
       }
 
       match /sales/{saleId} {
-        allow read: if canSell(businessId);
+        allow read: if canSell(businessId)
+          && canReadBranchRecord(businessId, resource.data);
         allow create: if canSell(businessId)
           && validSale()
+          && validBranchScope(businessId, request.resource.data)
           && dayUnlocked(businessId, request.resource.data.businessDate);
         allow update: if isManager(businessId)
           && validSale()
+          && validBranchScope(businessId, request.resource.data)
+          && request.resource.data.get('branchId', null) == resource.data.get('branchId', null)
           && dayUnlocked(businessId, resource.data.businessDate)
           && dayUnlocked(businessId, request.resource.data.businessDate);
         allow delete: if false;
