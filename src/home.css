@@ -14,6 +14,66 @@ body:not(.authenticated) #app-shell { display: none !important; }
 body.business-setup .sidebar { display: none !important; }
 body.business-setup .page-wrapper { margin-left: 0 !important; }
 #dashboard-root { min-height: 240px; }
+body.authenticated #sidebar-menu > ul > li.submenu > button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  border: 0;
+  border-radius: 5px;
+  padding: 10px 15px;
+  position: relative;
+  background: transparent;
+  color: #212b36;
+  cursor: pointer;
+  text-align: left;
+}
+body.authenticated #sidebar-menu > ul > li.submenu > button:hover,
+body.authenticated #sidebar-menu > ul > li.submenu > button:focus-visible {
+  background: #1b2850;
+  color: #fff;
+}
+body.authenticated #sidebar-menu > ul > li.submenu > button img { width: 18px; }
+body.authenticated #sidebar-menu > ul > li.submenu > button > span:not(.menu-arrow) {
+  margin-left: 10px;
+  color: #637381;
+  font-size: 15px;
+  font-weight: 500;
+}
+body.authenticated #sidebar-menu > ul > li.submenu > button:hover > span,
+body.authenticated #sidebar-menu > ul > li.submenu > button:focus-visible > span {
+  color: #fff;
+}
+body.authenticated #sidebar-menu > ul > li.submenu > button .menu-arrow {
+  display: inline-block;
+  position: absolute;
+  top: 12px;
+  right: 15px;
+  font-size: 18px;
+  line-height: 18px;
+  transition: transform .2s ease;
+}
+body.authenticated #sidebar-menu > ul > li.submenu > button .menu-arrow::before {
+  content: "\f105";
+  font-family: "font awesome 5 free";
+  font-weight: 900;
+}
+body.authenticated #sidebar-menu > ul > li.submenu > button[aria-expanded="true"] .menu-arrow {
+  transform: rotate(90deg);
+}
+body.authenticated #sidebar-menu > ul > li.submenu > button[aria-expanded="true"] + ul {
+  display: block !important;
+}
+body.authenticated #sidebar-menu > ul > li.submenu > button:focus-visible,
+.header [data-profile-menu-trigger]:focus-visible {
+  outline: 2px solid #84adff;
+  outline-offset: 2px;
+}
+.header [data-profile-menu-trigger] {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
 a { color: inherit; text-decoration: none; }
 button, input { font: inherit; }
 

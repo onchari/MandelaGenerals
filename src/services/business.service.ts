@@ -482,7 +482,9 @@ export function getBusinessUrl(slug: string): string {
   }
 
   if (hostname.endsWith('.github.io')) {
-    return `${window.location.origin}${basePath}b/${encodeURIComponent(slug)}/`;
+    const url = new URL(basePath, window.location.origin);
+    url.searchParams.set('tenant', slug);
+    return `${url.pathname}${url.search}`;
   }
 
   return `${window.location.protocol}//${slug}.${hostname}${basePath}`;
@@ -501,9 +503,11 @@ export function getBusinessPageUrl(slug: string, pageName: string): string {
 
 export function getBusinessUrlSuggestions(slug: string): { local: string; githubPages: string } {
   const basePath = import.meta.env.BASE_URL;
+  const githubPagesUrl = new URL(basePath, 'https://onchari.github.io');
+  githubPagesUrl.searchParams.set('tenant', slug);
   return {
     local: `${window.location.origin}${basePath}b/${encodeURIComponent(slug)}/`,
-    githubPages: `https://onchari.github.io${basePath}b/${encodeURIComponent(slug)}/`,
+    githubPages: githubPagesUrl.href,
   };
 }
 
